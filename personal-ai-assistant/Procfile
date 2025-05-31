@@ -1,0 +1,2 @@
+web: gunicorn backend.main:app --workers 1 --log-level info
+worker: celery -A backend.tasks.celery_app worker --loglevel=info
