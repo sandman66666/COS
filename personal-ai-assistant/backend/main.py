@@ -3,7 +3,7 @@ from datetime import timedelta
 from dotenv import load_dotenv
 load_dotenv()  # Load environment variables from .env file
 
-from flask import Flask, session, render_template, redirect, url_for
+from flask import Flask, session, render_template, redirect, url_for, request, jsonify
 from flask_dance.contrib.google import make_google_blueprint
 from flask_session import Session
 from werkzeug.middleware.proxy_fix import ProxyFix
@@ -64,6 +64,57 @@ def create_app():
         session.permanent = True
         return False
     
+    # Initialize Claude client inline to avoid import issues
+    import anthropic
+    
+    class ClaudeClient:
+        def __init__(self, api_key: str):
+            if not api_key:
+                raise ValueError("ANTHROPIC_API_KEY is required")
+            
+            self.client = anthropic.Anthropic(api_key=api_key)
+            self.conversation_history = {}
+            self.max_history = 20
+        
+        def send_message(self, user_email: str, message: str) -> str:
+            if user_email not in self.conversation_history:
+                self.conversation_history[user_email] = []
+            
+            system_prompt = f"""You are a personalized AI assistant for {user_email}.
+
+You have access to their Gmail and Google Calendar through native integrations.
+When they ask about emails or calendar, use your built-in access to provide real information.
+Be helpful and conversational."""
+            
+            self.conversation_history[user_email].append({
+                "role": "user", 
+                "content": message
+            })
+            
+            try:
+                response = self.client.messages.create(
+                    model="claude-4-sonnet-20250514",  # Updated to Claude 4 Sonnet
+                    max_tokens=4000,
+                    system=system_prompt,
+                    messages=self.conversation_history[user_email]
+                )
+                
+                assistant_response = response.content[0].text
+                
+                self.conversation_history[user_email].append({
+                    "role": "assistant",
+                    "content": assistant_response
+                })
+                
+                return assistant_response
+                
+            except Exception as e:
+                logger.error(f"Claude API error: {str(e)}")
+                return f"I'm having trouble connecting right now. Please try again in a moment."
+    
+    claude_client = ClaudeClient(api_key=os.getenv('ANTHROPIC_API_KEY'))
+    app.claude_client = claude_client
+    
     # Routes
     @app.route('/')
     def index():
@@ -71,6 +122,31 @@ def create_app():
             logger.info("User not authenticated, redirecting to Google login")
             return redirect(url_for('google.login'))
         return render_template('index.html', name=session.get('user_name', 'User'))
+    
+    @app.route('/chat')
+    def chat():
+        if 'user_email' not in session:
+            return redirect(url_for('google.login'))
+        return render_template('chat.html', name=session.get('user_name', 'User'))
+    
+    @app.route('/api/chat', methods=['POST'])
+    def api_chat():
+        if 'user_email' not in session:
+            return jsonify({'error': 'Not authenticated'}), 401
+        
+        user_email = session['user_email']
+        message = request.json.get('message')
+        
+        if not message:
+            return jsonify({'error': 'No message provided'}), 400
+        
+        try:
+            # Send message to Claude
+            response = claude_client.send_message(user_email, message)
+            return jsonify({'response': response})
+        except Exception as e:
+            logger.error(f"Chat error for {user_email}: {str(e)}")
+            return jsonify({'error': f'Error: {str(e)}'}), 500
     
     @app.route('/logout')
     def logout():
