@@ -1,10 +1,16 @@
 import os
+import sys
 import time
 import pathlib
 import secrets
 import requests
 from datetime import datetime, timedelta
+from sqlalchemy import create_engine
 from dotenv import load_dotenv
+
+# Add the project root directory to Python's import path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))  
+
 load_dotenv()  # Load environment variables from .env file
 
 from flask import Flask, session, render_template, redirect, url_for, request, jsonify, send_file
@@ -182,217 +188,59 @@ def create_app():
     
     @app.route('/email-insights')
     def email_insights():
-        if 'user_email' not in session or 'google_oauth_token' not in session:
+        if 'user_email' not in session:
             return redirect(url_for('login'))
         
         user_email = session['user_email']
-        access_token = session['google_oauth_token']['access_token']
         
-        # Check if currently syncing
+        # Initialize intelligence service
+        database_url = os.environ.get('DATABASE_URL', 'sqlite:///chief_of_staff.db')
+        from backend.services.intelligence_service import IntelligenceService
+        intelligence_service = IntelligenceService(database_url, claude_client)
+        
+        # Check if a sync is in progress for this user
         global sync_status
-        if sync_status['is_syncing'] and sync_status['user_email'] == user_email:
+        if sync_status.get('user_email') == user_email and sync_status.get('is_syncing', False):
+            # Redirect to sync progress page if sync is in progress
             return render_template('sync_in_progress.html',
-                                  name=session.get('user_name', 'User'),
-                                  sync_type=sync_status['sync_type'],
-                                  progress=sync_status['progress'])
+                                name=session.get('user_name', 'User'),
+                                sync_type='Email Intelligence',
+                                progress=sync_status.get('progress', 0))
         
-        # Check if we need to sync first
-        last_sync = sync_status.get('last_sync') or session.get('last_email_sync')
-        if not last_sync:
-            # Redirect to sync emails first
+        # Get insights from database
+        insights = intelligence_service.get_user_insights(user_email)
+        
+        if insights.get('status') == 'no_data':
             return render_template('email_insights.html',
-                                 name=session.get('user_name', 'User'),
-                                 insights="<div class='alert alert-info'>No email insights available yet. Please <a href='/sync-emails'>sync your emails</a> first.</div>")
+                                name=session.get('user_name', 'User'),
+                                insights="<div class='alert alert-info'>No email insights available yet. Please <a href='/sync-emails'>sync your emails</a> first.</div>")
         
-        try:
-            # Check if insights are available in sync_status
-            if 'email_insights' in sync_status and sync_status.get('user_email') == user_email:
-                insights = sync_status['email_insights']
-                # Store in session for future use
-                session['email_insights'] = insights
-                logger.info("Using email insights from sync_status")
-            elif 'email_insights' in session:
-                # Use insights from session if available
-                insights = session['email_insights']
-                logger.info("Using email insights from session")
-            else:
-                # If not available, fetch them
-                logger.info("Fetching new email insights")
-                from backend.core.claude_integration.email_intelligence import EmailIntelligence
-                email_intelligence = EmailIntelligence(claude_client)
-                insights = email_intelligence.analyze_recent_emails(user_email, access_token, days_back=30)
-                session['email_insights'] = insights
-            
-            # Debug logging
-            logger.info(f"Insights keys: {list(insights.keys())}")
-            logger.info(f"Key relationships count: {len(insights.get('key_relationships', []))}")
-            logger.info(f"Active projects count: {len(insights.get('active_projects', []))}")
-            logger.info(f"Action items count: {len(insights.get('action_items', []))}")
-            logger.info(f"Important info count: {len(insights.get('important_information', []))}")
-            
-            # Log first item of each category if available
-            if insights.get('key_relationships'):
-                logger.info(f"First relationship: {insights['key_relationships'][0]}")
-            
-            # Format the insights for display
-            formatted_insights = f"""<div class='card mb-4'>
-                <div class='card-header bg-primary text-white'>
-                    <h2 class='mb-0'>Email Intelligence Report</h2>
-                </div>
-                <div class='card-body'>
-                    <p class='lead'>Analysis of your email communications from the last 30 days</p>
-                    
-                    {"<div class='alert alert-info'><i class='fas fa-info-circle'></i> " + insights.get('message', '') + "</div>" if insights.get('message') else ""}
-                    
-                    <div class='card mb-3'>
-                        <div class='card-header bg-light'>
-                            <h3 class='mb-0'><i class='fas fa-users'></i> Key Relationships</h3>
-                        </div>
-                        <div class='card-body'>
-                            <ul class='list-group list-group-flush'>"""
-            
-            if insights.get('key_relationships'):
-                for relationship in insights.get('key_relationships', []):
-                    if isinstance(relationship, dict):
-                        name = relationship.get('name', 'Unknown')
-                        email = relationship.get('email', '')
-                        role = relationship.get('role', '')
-                        importance = relationship.get('importance', '')
-                        recent = relationship.get('recent_interactions', '')
-                        action = relationship.get('action_needed', '')
-                        
-                        formatted_insights += f"""<li class='list-group-item'>
-                            <strong>{name}</strong> {f"<span class='text-muted'>({email})</span>" if email else ""}
-                            {f"<br><small class='text-muted'>Role: {role}</small>" if role else ""}
-                            {f"<br><span class='badge bg-{('danger' if importance == 'High' else 'warning' if importance == 'Medium' else 'secondary')}'>{importance} Priority</span>" if importance else ""}
-                            {f"<br><p class='mb-0'>Recent: {recent}</p>" if recent else ""}
-                            {f"<br><p class='mb-0 text-danger'><strong>Action Needed:</strong> {action}</p>" if action else ""}
-                        </li>"""
-                    else:
-                        formatted_insights += f"<li class='list-group-item'>{relationship}</li>"
-            else:
-                formatted_insights += "<li class='list-group-item'>No key relationships identified</li>"
-            
-            formatted_insights += """</ul>
-                        </div>
-                    </div>
-                    
-                    <div class='card mb-3'>
-                        <div class='card-header bg-light'>
-                            <h3 class='mb-0'><i class='fas fa-tasks'></i> Active Projects</h3>
-                        </div>
-                        <div class='card-body'>
-                            <ul class='list-group list-group-flush'>"""
-            
-            if insights.get('active_projects'):
-                for project in insights.get('active_projects', []):
-                    if isinstance(project, dict):
-                        name = project.get('name', 'Unknown')
-                        description = project.get('description', '')
-                        status = project.get('status', '')
-                        priority = project.get('priority', '')
-                        stakeholders = project.get('key_stakeholders', [])
-                        recent_dev = project.get('recent_developments', '')
-                        next_steps = project.get('next_steps', '')
-                        
-                        formatted_insights += f"""<li class='list-group-item'>
-                            <strong>{name}</strong>
-                            {f"<span class='badge bg-{('danger' if priority == 'High' else 'warning' if priority == 'Medium' else 'info')}'>{priority} Priority</span>" if priority else ""}
-                            {f"<span class='badge bg-secondary ms-2'>{status}</span>" if status else ""}
-                            <p class='mb-1'>{description}</p>
-                            {f"<small class='text-muted'>Stakeholders: {', '.join(stakeholders)}</small><br>" if stakeholders else ""}
-                            {f"<p class='mb-1'><strong>Recent:</strong> {recent_dev}</p>" if recent_dev else ""}
-                            {f"<p class='mb-0 text-primary'><strong>Next Steps:</strong> {next_steps}</p>" if next_steps else ""}
-                        </li>"""
-                    else:
-                        formatted_insights += f"<li class='list-group-item'>{project}</li>"
-            else:
-                formatted_insights += "<li class='list-group-item'>No active projects identified</li>"
-            
-            formatted_insights += """</ul>
-                        </div>
-                    </div>
-                    
-                    <div class='card mb-3'>
-                        <div class='card-header bg-light'>
-                            <h3 class='mb-0'><i class='fas fa-clipboard-check'></i> Action Items</h3>
-                        </div>
-                        <div class='card-body'>
-                            <ul class='list-group list-group-flush'>"""
-            
-            if insights.get('action_items'):
-                for action in insights.get('action_items', []):
-                    if isinstance(action, dict):
-                        description = action.get('description', 'Unknown')
-                        context = action.get('context', '')
-                        deadline = action.get('deadline', '')
-                        related_to = action.get('related_to', '')
-                        priority = action.get('priority', '')
-                        status = action.get('status', 'Pending')
-                        
-                        formatted_insights += f"""<li class='list-group-item'>
-                            <strong>{description}</strong>
-                            {f"<span class='badge bg-{('danger' if priority == 'High' else 'warning' if priority == 'Medium' else 'info')} ms-2'>{priority}</span>" if priority else ""}
-                            {f"<span class='badge bg-warning text-dark ms-2'>Due: {deadline}</span>" if deadline else ""}
-                            {f"<br><small class='text-muted'>Context: {context}</small>" if context else ""}
-                            {f"<br><small class='text-muted'>Related to: {related_to}</small>" if related_to else ""}
-                            {f"<br><span class='badge bg-secondary'>{status}</span>" if status else ""}
-                        </li>"""
-                    else:
-                        formatted_insights += f"<li class='list-group-item'>{action}</li>"
-            else:
-                formatted_insights += "<li class='list-group-item'>No action items identified</li>"
-            
-            formatted_insights += """</ul>
-                        </div>
-                    </div>
-                    
-                    <div class='card mb-3'>
-                        <div class='card-header bg-light'>
-                            <h3 class='mb-0'><i class='fas fa-info-circle'></i> Important Information</h3>
-                        </div>
-                        <div class='card-body'>
-                            <ul class='list-group list-group-flush'>"""
-            
-            if insights.get('important_information'):
-                for info in insights.get('important_information', []):
-                    if isinstance(info, dict):
-                        topic = info.get('topic', '')
-                        details = info.get('details', '')
-                        source = info.get('source', '')
-                        date = info.get('date', '')
-                        relevance = info.get('relevance', '')
-                        related_to = info.get('related_to', '')
-                        
-                        formatted_insights += f"""<li class='list-group-item'>
-                            {f"<strong>{topic}</strong><br>" if topic else ""}
-                            {f"{details}" if details else info.get('description', '')}
-                            {f"<br><small class='text-muted'>Source: {source}</small>" if source else ""}
-                            {f"<br><small class='text-muted'>Date: {date}</small>" if date else ""}
-                            {f"<br><small class='text-primary'>Relevance: {relevance}</small>" if relevance else ""}
-                            {f"<br><small class='text-muted'>Related to: {related_to}</small>" if related_to else ""}
-                        </li>"""
-                    else:
-                        formatted_insights += f"<li class='list-group-item'>{info}</li>"
-            else:
-                formatted_insights += "<li class='list-group-item'>No important information identified</li>"
-            
-            formatted_insights += """</ul>
-                        </div>
-                    </div>
-                </div>
-            </div>"""
-            
-            # Update last sync time
-            session['last_email_sync'] = datetime.now().strftime("%Y-%m-%d %H:%M")
-            
-            return render_template('email_insights.html', 
-                                  name=session.get('user_name', 'User'),
-                                  insights=formatted_insights)
-                
-        except Exception as e:
-            logger.error(f"Email insights error: {str(e)}")
-            return jsonify({'error': f'Email insights error: {str(e)}'}), 500
+        # Debug logging
+        logger.info(f"Insights keys: {list(insights.keys())}")
+        logger.info(f"Key relationships count: {len(insights.get('key_relationships', []))}")
+        
+        # Set the last sync time in the session for display
+        if 'generated_at' in insights:
+            session['last_email_sync'] = insights['generated_at']
+        
+
+        
+
+        
+
+        
+
+        
+
+        
+
+        
+
+        
+        # Pass the raw insights data to the template
+        return render_template('email_insights.html', 
+                            name=session.get('user_name', 'User'),
+                            insights=insights)
     
     @app.route('/logout')
     def logout():
@@ -402,7 +250,6 @@ def create_app():
     
     @app.route('/sync-emails', methods=['GET', 'POST'])
     def sync_emails():
-        global sync_status
         logger.info(f"Sync emails route called with method: {request.method}")
         
         if 'user_email' not in session or 'google_oauth_token' not in session:
@@ -413,20 +260,25 @@ def create_app():
         access_token = session['google_oauth_token']['access_token']
         days_back = session.get('email_days_back', 30)
         
-        logger.info(f"Starting email sync for {user_email} with {days_back} days back")
+        # Check if force_full_sync was requested
+        force_full_sync = request.args.get('force_full_sync', 'false').lower() == 'true'
         
-        # Initialize sync status
-        sync_status['is_syncing'] = True
-        sync_status['progress'] = 0
-        sync_status['user_email'] = user_email
-        sync_status['sync_type'] = 'Email Intelligence'
+        logger.info(f"Starting email sync for {user_email} with {days_back} days back, force_full_sync={force_full_sync}")
         
-        # Copy session data to local variables before starting the thread
-        # to avoid "working outside of request context" errors
-        user_email_copy = user_email
-        access_token_copy = access_token
-        days_back_copy = days_back
-        user_name_copy = session.get('user_name', 'User')
+        # Initialize intelligence service
+        database_url = os.environ.get('DATABASE_URL', 'sqlite:///chief_of_staff.db')
+        from backend.services.intelligence_service import IntelligenceService
+        intelligence_service = IntelligenceService(database_url, claude_client)
+        
+        # Update global sync status
+        global sync_status
+        sync_status = {
+            'user_email': user_email,
+            'is_syncing': True,
+            'progress': 0,
+            'sync_type': 'Email Intelligence',
+            'start_time': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
         
         # Start sync in background thread
         def run_sync():
@@ -434,55 +286,28 @@ def create_app():
             try:
                 logger.info("Starting email sync in background thread")
                 
-                # Import EmailIntelligence module
-                import sys
-                import os
-                sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-                from backend.core.claude_integration.email_intelligence import EmailIntelligence
-                
-                # Update progress
-                sync_status['progress'] = 10
-                logger.info(f"Sync progress: 10%")
-                
-                # Initialize email intelligence module
-                email_intelligence = EmailIntelligence(claude_client)
-                sync_status['progress'] = 20
-                logger.info(f"Sync progress: 20%")
-                
-                # Analyze real emails
-                logger.info(f"Analyzing emails for {user_email_copy} with access token")
-                insights = email_intelligence.analyze_recent_emails(
-                    user_email_copy, 
-                    access_token_copy, 
-                    days_back=days_back_copy
+                # Process and store insights
+                result = intelligence_service.process_and_store_email_insights(
+                    user_email, 
+                    access_token, 
+                    days_back,
+                    force_full_sync
                 )
                 
-                sync_status['progress'] = 90
-                logger.info(f"Sync progress: 90%")
+                logger.info(f"Email sync completed with result: {result}")
                 
-                # Store insights in sync_status
-                sync_status['email_insights'] = insights
-                sync_status['last_sync'] = datetime.now().strftime("%Y-%m-%d %H:%M")
+                # Update sync status with results
+                sync_status['is_syncing'] = False
                 sync_status['progress'] = 100
-                
-                logger.info(f"Email sync completed successfully. Insights status: {insights.get('status', 'unknown')}")
-                if insights.get('status') == 'error':
-                    logger.error(f"Error in insights: {insights.get('message', 'Unknown error')}")
+                sync_status['completed_at'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                sync_status['email_insights'] = result
                 
             except Exception as e:
                 logger.error(f"Error in background sync thread: {str(e)}")
-                sync_status['status'] = 'failed'
-                sync_status['email_insights'] = {
-                    'status': 'error',
-                    'message': f'Failed to analyze emails: {str(e)}',
-                    'key_relationships': [],
-                    'active_projects': [],
-                    'action_items': [],
-                    'important_information': []
-                }
-            finally:
-                # Always mark sync as complete in finally block
+                # Update sync status with error
                 sync_status['is_syncing'] = False
+                sync_status['progress'] = 0
+                sync_status['error'] = str(e)
         
         # Start sync thread
         sync_thread = threading.Thread(target=run_sync)
@@ -490,11 +315,11 @@ def create_app():
         sync_thread.start()
         logger.info("Sync thread started successfully")
         
-        # Redirect to sync progress page first
+        # Show sync progress page
         return render_template('sync_in_progress.html',
-                             name=session.get('user_name', 'User'),
-                             sync_type='Email Intelligence',
-                             progress=0)
+                            name=session.get('user_name', 'User'),
+                            sync_type='Email Intelligence',
+                            progress=0)
             
     @app.route('/disconnect-gmail')
     def disconnect_gmail():
@@ -529,34 +354,14 @@ def create_app():
             })
         else:
             # No sync status for this user
+            # Instead of redirecting to settings, redirect to email-insights
+            # This prevents the redirect loop when returning from settings page
             return jsonify({
                 'is_syncing': False,
                 'progress': 0,
                 'sync_type': '',
-                'redirect': '/settings'
+                'redirect': '/email-insights'
             })
-        
-    @app.route('/api/email-insights')
-    def api_email_insights():
-        if 'user_email' not in session:
-            return jsonify({'error': 'Not authenticated'}), 401
-            
-        # Check if we need to sync first
-        last_sync = session.get('last_email_sync')
-        if not last_sync:
-            return jsonify({
-                'status': 'no_data',
-                'message': 'No email insights available yet. Please sync your emails first.'
-            })
-        
-        # Get insights from session
-        insights = session.get('email_insights', {})
-        
-        # Add last sync time to the response
-        insights['last_sync'] = last_sync
-        insights['status'] = 'success'
-        
-        return jsonify(insights)
     
     @app.route('/api/save-preferences', methods=['POST'])
     def save_preferences():
@@ -726,4 +531,4 @@ def create_app():
 
 if __name__ == '__main__':
     app = create_app()
-    app.run(host='0.0.0.0', port=8080, debug=True) 
+    app.run(host='0.0.0.0', port=8080, debug=True)

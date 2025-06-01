@@ -30,7 +30,7 @@ class EmailIntelligence:
         """
         self.claude_client = claude_client
     
-    def analyze_recent_emails(self, user_email: str, access_token: str = None, days_back: int = 30) -> Dict[str, Any]:
+    def analyze_recent_emails(self, user_email: str, access_token: str = None, days_back: int = 30, previous_insights: Dict[str, Any] = None) -> Dict[str, Any]:
         """
         Analyze emails from the last N days to extract business intelligence using multiple targeted prompts.
         Uses the Gmail API to fetch real emails via GmailConnector.
@@ -39,11 +39,14 @@ class EmailIntelligence:
             user_email: The email of the user whose emails to analyze
             access_token: OAuth access token for Gmail API
             days_back: Number of days back to analyze (default: 30)
+            previous_insights: Previously generated insights to build upon (default: None)
             
         Returns:
             Dict containing analysis results with key insights from multiple specialized prompts
         """
         logger.info(f"Analyzing emails from last {days_back} days for {user_email}")
+        analysis_type = "incremental" if previous_insights else "full"
+        logger.info(f"Performing {analysis_type} analysis")
         
         try:
             # Validate we have an access token
@@ -99,59 +102,30 @@ class EmailIntelligence:
                 "message": "Analysis completed successfully"
             }
             
-            # Analyze relationships
-            logger.info("Analyzing key relationships...")
-            relationships_response = self._get_structured_response(
-                user_email, 
-                self._create_relationships_prompt(user_email, email_summaries), 
-                "key_relationships",
-                days_back
-            )
+            # Get relationships analysis
+            relationships_prompt = self._create_relationships_prompt(user_email, email_summaries, previous_insights)
+            relationships_response = self._get_structured_response(user_email, relationships_prompt, "key_relationships", days_back)
             combined_results["key_relationships"] = relationships_response.get("key_relationships", [])
-            logger.info(f"Relationships response: {json.dumps(relationships_response, indent=2)[:500]}...")  # Log first 500 chars
             
-            # Analyze projects
-            logger.info("Analyzing active projects...")
-            projects_response = self._get_structured_response(
-                user_email,
-                self._create_projects_prompt(user_email, email_summaries),
-                "active_projects",
-                days_back
-            )
+            # Get projects analysis
+            projects_prompt = self._create_projects_prompt(user_email, email_summaries, previous_insights)
+            projects_response = self._get_structured_response(user_email, projects_prompt, "active_projects", days_back)
             combined_results["active_projects"] = projects_response.get("active_projects", [])
-            logger.info(f"Projects response: {json.dumps(projects_response, indent=2)[:500]}...")  # Log first 500 chars
             
-            # Analyze patterns
-            logger.info("Analyzing communication patterns...")
-            patterns_response = self._get_structured_response(
-                user_email,
-                self._create_patterns_prompt(user_email, email_summaries),
-                "communication_patterns",
-                days_back
-            )
+            # Get communication patterns analysis
+            patterns_prompt = self._create_patterns_prompt(user_email, email_summaries, previous_insights)
+            patterns_response = self._get_structured_response(user_email, patterns_prompt, "communication_patterns", days_back)
             combined_results["communication_patterns"] = patterns_response.get("communication_patterns", {})
             
-            # Analyze action items
-            logger.info("Analyzing action items...")
-            actions_response = self._get_structured_response(
-                user_email,
-                self._create_actions_prompt(user_email, email_summaries),
-                "action_items",
-                days_back
-            )
+            # Get action items analysis
+            actions_prompt = self._create_actions_prompt(user_email, email_summaries, previous_insights)
+            actions_response = self._get_structured_response(user_email, actions_prompt, "action_items", days_back)
             combined_results["action_items"] = actions_response.get("action_items", [])
-            logger.info(f"Actions response: {json.dumps(actions_response, indent=2)[:500]}...")  # Log first 500 chars
             
-            # Extract important information
-            logger.info("Analyzing important information...")
-            info_response = self._get_structured_response(
-                user_email,
-                self._create_info_prompt(user_email, email_summaries),
-                "important_information",
-                days_back
-            )
+            # Get important information analysis
+            info_prompt = self._create_info_prompt(user_email, email_summaries, previous_insights)
+            info_response = self._get_structured_response(user_email, info_prompt, "important_information", days_back)
             combined_results["important_information"] = info_response.get("important_information", [])
-            logger.info(f"Info response: {json.dumps(info_response, indent=2)[:500]}...")  # Log first 500 chars
             
             logger.info(f"Successfully analyzed emails for {user_email} using multiple targeted prompts")
             return combined_results
@@ -168,7 +142,7 @@ class EmailIntelligence:
                 "important_information": []
             }
     
-    def _create_relationships_prompt(self, user_email: str, email_summaries: List[Dict]) -> str:
+    def _create_relationships_prompt(self, user_email: str, email_summaries: List[Dict], previous_insights: Dict[str, Any] = None) -> str:
         """Create a prompt for analyzing key relationships from emails."""
         # Create a more concise summary focusing on sender information
         concise_summaries = []
@@ -180,8 +154,19 @@ class EmailIntelligence:
                 'snippet': email.get('body', '')[:200] if 'body' in email else ''  # Use snippet instead of full body
             })
         
+        # Include previous relationships if available
+        previous_relationships_text = ""
+        if previous_insights and 'key_relationships' in previous_insights and previous_insights['key_relationships']:
+            previous_relationships_text = f"""
+            IMPORTANT: Here are the key relationships identified from previous email analysis. 
+            Build upon and update this information with the new email data:
+            {json.dumps(previous_insights['key_relationships'], indent=2)}
+            """
+        
         return f"""
         Analyze the following email summaries from {user_email} to identify key relationships.
+        
+        {previous_relationships_text}
         
         Email data (showing sender, subject, date, and brief snippet):
         {json.dumps(concise_summaries, indent=2)}
@@ -201,24 +186,36 @@ class EmailIntelligence:
         }}
         
         Include at least 5-10 key relationships if they exist in the data, ordered by importance.
+        If a person appears in both the previous relationships and the new emails, merge the information to create a more complete profile that builds upon the existing knowledge.
         """
     
-    def _create_projects_prompt(self, user_email: str, email_summaries: List[Dict]) -> str:
+    def _create_projects_prompt(self, user_email: str, email_summaries: List[Dict], previous_insights: Dict[str, Any] = None) -> str:
         """Create a prompt for analyzing active projects from emails."""
-        # Create concise summaries focusing on project-related content
+        # Create a more concise summary focusing on project-related information
         concise_summaries = []
         for email in email_summaries[:30]:  # Limit to 30 most recent emails
             concise_summaries.append({
-                'subject': email.get('subject', '')[:100],
                 'sender': email.get('sender', 'Unknown'),
+                'subject': email.get('subject', '')[:100],  # Limit subject length
                 'date': email.get('date', ''),
-                'snippet': email.get('body', '')[:200] if 'body' in email else ''
+                'snippet': email.get('body', '')[:200] if 'body' in email else ''  # Use snippet instead of full body
             })
         
-        return f"""
-        Analyze the following email summaries from {user_email} to identify active projects or initiatives.
+        # Include previous projects if available
+        previous_projects_text = ""
+        if previous_insights and 'active_projects' in previous_insights and previous_insights['active_projects']:
+            previous_projects_text = f"""
+            IMPORTANT: Here are the active projects identified from previous email analysis. 
+            Build upon and update this information with the new email data, tracking progress and changes in status:
+            {json.dumps(previous_insights['active_projects'], indent=2)}
+            """
         
-        Email data (showing subject, sender, date, and brief snippet):
+        return f"""
+        Analyze the following email summaries from {user_email} to identify active projects and initiatives.
+        
+        {previous_projects_text}
+        
+        Email data (showing sender, subject, date, and brief snippet):
         {json.dumps(concise_summaries, indent=2)}
         
         Provide a comprehensive analysis of active projects in JSON format with the following structure:
@@ -227,19 +224,20 @@ class EmailIntelligence:
                 {{
                     "name": "Project Name",
                     "description": "Brief description of the project",
-                    "status": "Current status (e.g., Planning, In Progress, Near Completion)",
+                    "status": "Current status (e.g., In Progress, Planning, Completed)",
                     "key_stakeholders": ["Person1", "Person2"],
-                    "recent_developments": "Recent updates or changes",
-                    "next_steps": "Upcoming actions or milestones",
-                    "priority": "High/Medium/Low"
+                    "priority": "High/Medium/Low",
+                    "next_steps": "Upcoming actions or milestones"
                 }}
             ]
         }}
         
         Include at least 3-7 active projects if they exist in the data, ordered by priority.
+        If a project appears in both the previous projects and the new emails, merge the information to create a more complete profile, updating status and progress based on the new information.
+        Track how projects evolve over time, noting any changes in status, priority, or stakeholders.
         """
     
-    def _create_patterns_prompt(self, user_email: str, email_summaries: List[Dict]) -> str:
+    def _create_patterns_prompt(self, user_email: str, email_summaries: List[Dict], previous_insights: Dict[str, Any] = None) -> str:
         """Create a prompt for analyzing communication patterns from emails."""
         # Create concise summaries for pattern analysis
         concise_summaries = []
@@ -251,8 +249,19 @@ class EmailIntelligence:
                 'is_unread': email.get('is_unread', False)
             })
         
+        # Include previous patterns if available
+        previous_patterns_text = ""
+        if previous_insights and 'communication_patterns' in previous_insights and previous_insights['communication_patterns']:
+            previous_patterns_text = f"""
+            IMPORTANT: Here are the communication patterns identified from previous email analysis. 
+            Build upon and update this information with the new email data:
+            {json.dumps(previous_insights['communication_patterns'], indent=2)}
+            """
+        
         return f"""
         Analyze the following email summaries from {user_email} to identify communication patterns.
+        
+        {previous_patterns_text}
         
         Email data (showing sender, date, subject, and read status):
         {json.dumps(concise_summaries, indent=2)}
@@ -262,27 +271,32 @@ class EmailIntelligence:
             "communication_patterns": {{
                 "most_frequent_contacts": [
                     {{
-                        "name": "Person's Name",
-                        "email": "person@example.com",
-                        "interaction_count": "Approximate number of interactions",
-                        "typical_topics": ["Topic 1", "Topic 2"]
+                        "name": "Contact Name",
+                        "email": "contact@example.com",
+                        "frequency": "Number of interactions"
                     }}
                 ],
                 "busiest_times": {{
-                    "day_of_week": "Most active day(s)",
-                    "time_of_day": "Most active time period(s)"
+                    "days_of_week": ["Monday", "Thursday"],
+                    "times_of_day": ["Morning", "Evening"]
                 }},
-                "response_times": {{
-                    "average": "Average response time",
-                    "to_important_contacts": "Response time to key stakeholders"
+                "response_patterns": {{
+                    "average_response_time": "X hours/days",
+                    "most_responsive_to": ["Person1", "Person2"],
+                    "least_responsive_to": ["Person3", "Person4"]
                 }},
-                "common_topics": ["Topic 1", "Topic 2", "Topic 3"],
-                "communication_style": "Brief analysis of communication style"
+                "communication_style": {{
+                    "email_length": "Short/Medium/Long",
+                    "formality_level": "Formal/Casual/Mixed",
+                    "common_phrases": ["Phrase1", "Phrase2"]
+                }}
             }}
         }}
+        
+        If there are patterns in both the previous analysis and the new emails, merge the information to create a more comprehensive understanding of communication habits over time.
         """
     
-    def _create_actions_prompt(self, user_email: str, email_summaries: List[Dict]) -> str:
+    def _create_actions_prompt(self, user_email: str, email_summaries: List[Dict], previous_insights: Dict[str, Any] = None) -> str:
         """Create a prompt for identifying action items from emails."""
         # Create concise summaries focusing on actionable content
         concise_summaries = []
@@ -294,30 +308,41 @@ class EmailIntelligence:
                 'snippet': email.get('body', '')[:300] if 'body' in email else ''  # Slightly longer for action items
             })
         
-        return f"""
-        Analyze the following email summaries from {user_email} to identify action items and follow-ups needed.
+        # Include previous action items if available
+        previous_actions_text = ""
+        if previous_insights and 'action_items' in previous_insights and previous_insights['action_items']:
+            previous_actions_text = f"""
+            IMPORTANT: Here are the action items identified from previous email analysis. 
+            Build upon and update this information with the new email data, noting which items may have been completed:
+            {json.dumps(previous_insights['action_items'], indent=2)}
+            """
         
-        Email data (showing subject, sender, date, and content snippet):
+        return f"""
+        Analyze the following email summaries from {user_email} to identify action items and tasks.
+        
+        {previous_actions_text}
+        
+        Email data (showing sender, subject, date, and brief snippet):
         {json.dumps(concise_summaries, indent=2)}
         
         Provide a comprehensive list of action items in JSON format with the following structure:
         {{
             "action_items": [
                 {{
-                    "description": "Description of the action item",
-                    "context": "Brief context about where this came from",
-                    "deadline": "Due date if specified (or null)",
-                    "related_to": "Project or person this relates to",
+                    "description": "Brief description of the action item",
+                    "due_date": "Due date if specified (or null)",
                     "priority": "High/Medium/Low",
-                    "status": "Pending"
+                    "related_to": "Person or project related to this action",
+                    "status": "Pending/In Progress/Completed"
                 }}
             ]
         }}
         
-        Include at least 5-10 action items if they exist in the data, ordered by priority and deadline.
+        Include only clear action items where I need to take action. Prioritize recent and urgent items.
+        For action items that appear in both the previous list and the new emails, update their status and details based on the latest information.
         """
     
-    def _create_info_prompt(self, user_email: str, email_summaries: List[Dict]) -> str:
+    def _create_info_prompt(self, user_email: str, email_summaries: List[Dict], previous_insights: Dict[str, Any] = None) -> str:
         """Create a prompt for extracting important information from emails."""
         # Create concise summaries for important information
         concise_summaries = []
@@ -329,27 +354,38 @@ class EmailIntelligence:
                 'snippet': email.get('body', '')[:300] if 'body' in email else ''
             })
         
-        return f"""
-        Analyze the following email summaries from {user_email} to extract important information and insights.
+        # Include previous important information if available
+        previous_info_text = ""
+        if previous_insights and 'important_information' in previous_insights and previous_insights['important_information']:
+            previous_info_text = f"""
+            IMPORTANT: Here is the important information identified from previous email analysis. 
+            Build upon and update this information with the new email data:
+            {json.dumps(previous_insights['important_information'], indent=2)}
+            """
         
-        Email data (showing subject, sender, date, and content snippet):
+        return f"""
+        Analyze the following email summaries from {user_email} to extract important information.
+        
+        {previous_info_text}
+        
+        Email data (showing sender, subject, date, and brief snippet):
         {json.dumps(concise_summaries, indent=2)}
         
         Provide a comprehensive list of important information in JSON format with the following structure:
         {{
             "important_information": [
                 {{
-                    "topic": "Brief topic or title",
+                    "topic": "Brief topic or category",
                     "details": "Detailed information",
-                    "source": "Where this information came from",
-                    "date": "When this information was shared",
-                    "relevance": "Why this is important",
-                    "related_to": "Project, person, or context this relates to"
+                    "source": "Person or organization this came from",
+                    "date_received": "When this information was received",
+                    "relevance": "Why this information is important"
                 }}
             ]
         }}
         
-        Ensure you identify at least 5-7 pieces of important information if they exist in the data, ordered by importance.
+        Focus on extracting key facts, announcements, decisions, or other noteworthy information.
+        If a topic appears in both the previous information and the new emails, merge the details to create a more complete understanding of that topic.
         """
     
     def _get_structured_response(self, user_email: str, prompt: str, expected_key: str = None, days_back: int = 30) -> Dict[str, Any]:
