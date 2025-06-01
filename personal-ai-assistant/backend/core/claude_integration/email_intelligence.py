@@ -30,7 +30,7 @@ class EmailIntelligence:
         """
         self.claude_client = claude_client
     
-    def analyze_recent_emails(self, user_email: str, access_token: str = None, days_back: int = 30, previous_insights: Dict[str, Any] = None) -> Dict[str, Any]:
+    def analyze_recent_emails(self, user_email: str, access_token: str = None, days_back: int = 30, previous_insights: Dict[str, Any] = None, structured_knowledge: Dict[str, Any] = None) -> Dict[str, Any]:
         """
         Analyze emails from the last N days to extract business intelligence using multiple targeted prompts.
         Uses the Gmail API to fetch real emails via GmailConnector.
@@ -102,28 +102,35 @@ class EmailIntelligence:
                 "message": "Analysis completed successfully"
             }
             
+            # Log structured knowledge if available
+            if structured_knowledge:
+                projects_count = len(structured_knowledge.get('projects', []))
+                goals_count = len(structured_knowledge.get('goals', []))
+                knowledge_files_count = len(structured_knowledge.get('knowledge_files', []))
+                logger.info(f"Using structured knowledge: {projects_count} projects, {goals_count} goals, {knowledge_files_count} knowledge files")
+            
             # Get relationships analysis
-            relationships_prompt = self._create_relationships_prompt(user_email, email_summaries, previous_insights)
+            relationships_prompt = self._create_relationships_prompt(user_email, email_summaries, previous_insights, structured_knowledge)
             relationships_response = self._get_structured_response(user_email, relationships_prompt, "key_relationships", days_back)
             combined_results["key_relationships"] = relationships_response.get("key_relationships", [])
             
             # Get projects analysis
-            projects_prompt = self._create_projects_prompt(user_email, email_summaries, previous_insights)
+            projects_prompt = self._create_projects_prompt(user_email, email_summaries, previous_insights, structured_knowledge)
             projects_response = self._get_structured_response(user_email, projects_prompt, "active_projects", days_back)
             combined_results["active_projects"] = projects_response.get("active_projects", [])
             
             # Get communication patterns analysis
-            patterns_prompt = self._create_patterns_prompt(user_email, email_summaries, previous_insights)
+            patterns_prompt = self._create_patterns_prompt(user_email, email_summaries, previous_insights, structured_knowledge)
             patterns_response = self._get_structured_response(user_email, patterns_prompt, "communication_patterns", days_back)
             combined_results["communication_patterns"] = patterns_response.get("communication_patterns", {})
             
             # Get action items analysis
-            actions_prompt = self._create_actions_prompt(user_email, email_summaries, previous_insights)
+            actions_prompt = self._create_actions_prompt(user_email, email_summaries, previous_insights, structured_knowledge)
             actions_response = self._get_structured_response(user_email, actions_prompt, "action_items", days_back)
             combined_results["action_items"] = actions_response.get("action_items", [])
             
             # Get important information analysis
-            info_prompt = self._create_info_prompt(user_email, email_summaries, previous_insights)
+            info_prompt = self._create_info_prompt(user_email, email_summaries, previous_insights, structured_knowledge)
             info_response = self._get_structured_response(user_email, info_prompt, "important_information", days_back)
             combined_results["important_information"] = info_response.get("important_information", [])
             
@@ -142,7 +149,7 @@ class EmailIntelligence:
                 "important_information": []
             }
     
-    def _create_relationships_prompt(self, user_email: str, email_summaries: List[Dict], previous_insights: Dict[str, Any] = None) -> str:
+    def _create_relationships_prompt(self, user_email: str, email_summaries: List[Dict], previous_insights: Dict[str, Any] = None, structured_knowledge: Dict[str, Any] = None) -> str:
         """Create a prompt for analyzing key relationships from emails."""
         # Create a more concise summary focusing on sender information
         concise_summaries = []
@@ -163,10 +170,33 @@ class EmailIntelligence:
             {json.dumps(previous_insights['key_relationships'], indent=2)}
             """
         
+        # Include structured knowledge about projects and goals if available
+        structured_knowledge_text = ""
+        if structured_knowledge:
+            projects = structured_knowledge.get('projects', [])
+            goals = structured_knowledge.get('goals', [])
+            
+            if projects or goals:
+                structured_knowledge_text = "IMPORTANT: Consider the following user-defined projects and goals when analyzing relationships:\n"
+                
+                if projects:
+                    structured_knowledge_text += "\nProjects:\n"
+                    for project in projects:
+                        structured_knowledge_text += f"- {project.get('name')}: {project.get('description')}\n"
+                        if project.get('stakeholders'):
+                            structured_knowledge_text += f"  Stakeholders: {', '.join(project.get('stakeholders'))}\n"
+                
+                if goals:
+                    structured_knowledge_text += "\nGoals:\n"
+                    for goal in goals:
+                        structured_knowledge_text += f"- {goal.get('title')}: {goal.get('description')}\n"
+        
         return f"""
         Analyze the following email summaries from {user_email} to identify key relationships.
         
         {previous_relationships_text}
+        
+        {structured_knowledge_text}
         
         Email data (showing sender, subject, date, and brief snippet):
         {json.dumps(concise_summaries, indent=2)}
@@ -189,7 +219,7 @@ class EmailIntelligence:
         If a person appears in both the previous relationships and the new emails, merge the information to create a more complete profile that builds upon the existing knowledge.
         """
     
-    def _create_projects_prompt(self, user_email: str, email_summaries: List[Dict], previous_insights: Dict[str, Any] = None) -> str:
+    def _create_projects_prompt(self, user_email: str, email_summaries: List[Dict], previous_insights: Dict[str, Any] = None, structured_knowledge: Dict[str, Any] = None) -> str:
         """Create a prompt for analyzing active projects from emails."""
         # Create a more concise summary focusing on project-related information
         concise_summaries = []
@@ -210,12 +240,38 @@ class EmailIntelligence:
             {json.dumps(previous_insights['active_projects'], indent=2)}
             """
         
+        # Include structured knowledge about projects if available
+        structured_knowledge_text = ""
+        if structured_knowledge:
+            projects = structured_knowledge.get('projects', [])
+            goals = structured_knowledge.get('goals', [])
+            knowledge_files = structured_knowledge.get('knowledge_files', [])
+            
+            if projects:
+                structured_knowledge_text += "\nIMPORTANT: The user has manually defined the following projects. Use this information as a foundation and update with any new details from emails:\n"
+                for project in projects:
+                    structured_knowledge_text += f"\n- Project: {project.get('name')}\n"
+                    structured_knowledge_text += f"  Description: {project.get('description')}\n"
+                    structured_knowledge_text += f"  Status: {project.get('status')}\n"
+                    structured_knowledge_text += f"  Priority: {project.get('priority')}\n"
+                    if project.get('stakeholders'):
+                        structured_knowledge_text += f"  Stakeholders: {', '.join(project.get('stakeholders'))}\n"
+                    if project.get('keywords'):
+                        structured_knowledge_text += f"  Keywords: {', '.join(project.get('keywords'))}\n"
+        
+            if goals:
+                structured_knowledge_text += "\nIMPORTANT: Consider these user goals when analyzing projects:\n"
+                for goal in goals:
+                    structured_knowledge_text += f"- {goal.get('title')}: {goal.get('description')}\n"
+        
         return f"""
         Analyze the following email summaries from {user_email} to identify active projects and initiatives.
         
         {previous_projects_text}
         
-        Email data (showing sender, subject, date, and brief snippet):
+        {structured_knowledge_text}
+        
+        Email data:
         {json.dumps(concise_summaries, indent=2)}
         
         Provide a comprehensive analysis of active projects in JSON format with the following structure:
@@ -237,7 +293,7 @@ class EmailIntelligence:
         Track how projects evolve over time, noting any changes in status, priority, or stakeholders.
         """
     
-    def _create_patterns_prompt(self, user_email: str, email_summaries: List[Dict], previous_insights: Dict[str, Any] = None) -> str:
+    def _create_patterns_prompt(self, user_email: str, email_summaries: List[Dict], previous_insights: Dict[str, Any] = None, structured_knowledge: Dict[str, Any] = None) -> str:
         """Create a prompt for analyzing communication patterns from emails."""
         # Create concise summaries for pattern analysis
         concise_summaries = []
@@ -258,12 +314,25 @@ class EmailIntelligence:
             {json.dumps(previous_insights['communication_patterns'], indent=2)}
             """
         
+        # Include structured knowledge about relationships and projects if available
+        structured_knowledge_text = ""
+        if structured_knowledge:
+            projects = structured_knowledge.get('projects', [])
+            
+            if projects:
+                structured_knowledge_text += "\nIMPORTANT: Consider these user-defined projects when analyzing communication patterns:\n"
+                for project in projects:
+                    if project.get('stakeholders'):
+                        structured_knowledge_text += f"- Project '{project.get('name')}' involves stakeholders: {', '.join(project.get('stakeholders'))}\n"
+        
         return f"""
-        Analyze the following email summaries from {user_email} to identify communication patterns.
+        Analyze the following email summaries from {user_email} to identify communication patterns and preferences.
         
         {previous_patterns_text}
         
-        Email data (showing sender, date, subject, and read status):
+        {structured_knowledge_text}
+        
+        Email data:
         {json.dumps(concise_summaries, indent=2)}
         
         Provide a comprehensive analysis of communication patterns in JSON format with the following structure:
@@ -296,7 +365,7 @@ class EmailIntelligence:
         If there are patterns in both the previous analysis and the new emails, merge the information to create a more comprehensive understanding of communication habits over time.
         """
     
-    def _create_actions_prompt(self, user_email: str, email_summaries: List[Dict], previous_insights: Dict[str, Any] = None) -> str:
+    def _create_actions_prompt(self, user_email: str, email_summaries: List[Dict], previous_insights: Dict[str, Any] = None, structured_knowledge: Dict[str, Any] = None) -> str:
         """Create a prompt for identifying action items from emails."""
         # Create concise summaries focusing on actionable content
         concise_summaries = []
@@ -313,17 +382,43 @@ class EmailIntelligence:
         if previous_insights and 'action_items' in previous_insights and previous_insights['action_items']:
             previous_actions_text = f"""
             IMPORTANT: Here are the action items identified from previous email analysis. 
-            Build upon and update this information with the new email data, noting which items may have been completed:
+            Build upon this list, remove completed items, and add new items from the recent emails:
             {json.dumps(previous_insights['action_items'], indent=2)}
             """
         
+        # Include structured knowledge about projects and goals if available
+        structured_knowledge_text = ""
+        if structured_knowledge:
+            projects = structured_knowledge.get('projects', [])
+            goals = structured_knowledge.get('goals', [])
+            
+            if projects or goals:
+                structured_knowledge_text += "\nIMPORTANT: Consider these user-defined projects and goals when identifying action items:\n"
+                
+                if projects:
+                    structured_knowledge_text += "\nProjects:\n"
+                    for project in projects:
+                        structured_knowledge_text += f"- {project.get('name')}: {project.get('description')}\n"
+                        structured_knowledge_text += f"  Status: {project.get('status')}, Priority: {project.get('priority')}\n"
+                
+                if goals:
+                    structured_knowledge_text += "\nGoals:\n"
+                    for goal in goals:
+                        structured_knowledge_text += f"- {goal.get('title')}: {goal.get('description')}\n"
+                        if goal.get('timeframe'):
+                            structured_knowledge_text += f"  Timeframe: {goal.get('timeframe')}\n"
+                        if goal.get('success_metrics'):
+                            structured_knowledge_text += f"  Success metrics: {goal.get('success_metrics')}\n"
+        
         return f"""
-        Analyze the following email summaries from {user_email} to identify action items and tasks.
+        Analyze the following email summaries from {user_email} to identify action items and follow-ups needed.
         
         {previous_actions_text}
         
-        Email data (showing sender, subject, date, and brief snippet):
-        {json.dumps(concise_summaries, indent=2)}
+        {structured_knowledge_text}
+        
+        Email data:
+        {json.dumps(email_summaries, indent=2)}
         
         Provide a comprehensive list of action items in JSON format with the following structure:
         {{
@@ -342,7 +437,7 @@ class EmailIntelligence:
         For action items that appear in both the previous list and the new emails, update their status and details based on the latest information.
         """
     
-    def _create_info_prompt(self, user_email: str, email_summaries: List[Dict], previous_insights: Dict[str, Any] = None) -> str:
+    def _create_info_prompt(self, user_email: str, email_summaries: List[Dict], previous_insights: Dict[str, Any] = None, structured_knowledge: Dict[str, Any] = None) -> str:
         """Create a prompt for extracting important information from emails."""
         # Create concise summaries for important information
         concise_summaries = []
@@ -358,18 +453,47 @@ class EmailIntelligence:
         previous_info_text = ""
         if previous_insights and 'important_information' in previous_insights and previous_insights['important_information']:
             previous_info_text = f"""
-            IMPORTANT: Here is the important information identified from previous email analysis. 
-            Build upon and update this information with the new email data:
+            IMPORTANT: Here is important information identified from previous email analysis. 
+            Build upon this information with the new email data:
             {json.dumps(previous_insights['important_information'], indent=2)}
             """
         
+        # Include structured knowledge files if available
+        structured_knowledge_text = ""
+        if structured_knowledge:
+            projects = structured_knowledge.get('projects', [])
+            goals = structured_knowledge.get('goals', [])
+            knowledge_files = structured_knowledge.get('knowledge_files', [])
+            
+            if knowledge_files:
+                structured_knowledge_text += "\nIMPORTANT: Consider these knowledge documents when identifying important information:\n"
+                for file in knowledge_files:
+                    structured_knowledge_text += f"\n- Document: {file.get('filename')}\n"
+                    structured_knowledge_text += f"  Category: {file.get('category')}\n"
+                    structured_knowledge_text += f"  Description: {file.get('description')}\n"
+                    if file.get('content'):
+                        content_excerpt = file.get('content')[:500] + "..." if len(file.get('content')) > 500 else file.get('content')
+                        structured_knowledge_text += f"  Content excerpt: {content_excerpt}\n"
+        
+            if projects:
+                structured_knowledge_text += "\nRelevant projects:\n"
+                for project in projects:
+                    structured_knowledge_text += f"- {project.get('name')}: {project.get('description')}\n"
+        
+            if goals:
+                structured_knowledge_text += "\nRelevant goals:\n"
+                for goal in goals:
+                    structured_knowledge_text += f"- {goal.get('title')}: {goal.get('description')}\n"
+        
         return f"""
-        Analyze the following email summaries from {user_email} to extract important information.
+        Analyze the following email summaries from {user_email} to identify important information, facts, and insights.
         
         {previous_info_text}
         
-        Email data (showing sender, subject, date, and brief snippet):
-        {json.dumps(concise_summaries, indent=2)}
+        {structured_knowledge_text}
+        
+        Email data:
+        {json.dumps(email_summaries, indent=2)}
         
         Provide a comprehensive list of important information in JSON format with the following structure:
         {{

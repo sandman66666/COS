@@ -4,15 +4,15 @@ This creates persistent storage for your Chief of Staff AI system.
 """
 
 from sqlalchemy import Column, Integer, String, Text, DateTime, JSON, Boolean, ForeignKey
-from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 from datetime import datetime
 
-Base = declarative_base()
+from models.database.base import Base
 
 class UserIntelligence(Base):
     """Stores user-specific business intelligence and insights"""
     __tablename__ = "user_intelligence"
+    __table_args__ = {'extend_existing': True}
     
     id = Column(Integer, primary_key=True)
     user_email = Column(String, unique=True, index=True)
@@ -28,6 +28,11 @@ class UserIntelligence(Base):
     last_email_analysis = Column(JSON, default={})
     email_insights_cache = Column(JSON, default={})
     
+    # Relationships to structured knowledge models - using string references to avoid circular imports
+    projects = relationship("Project", back_populates="user_intelligence", cascade="all, delete-orphan", lazy="dynamic")
+    goals = relationship("Goal", back_populates="user_intelligence", cascade="all, delete-orphan", lazy="dynamic")
+    knowledge_files = relationship("KnowledgeFile", back_populates="user_intelligence", cascade="all, delete-orphan", lazy="dynamic")
+    
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -35,6 +40,7 @@ class UserIntelligence(Base):
 class EmailSyncStatus(Base):
     """Tracks email sync operations and results"""
     __tablename__ = "email_sync_status"
+    __table_args__ = {'extend_existing': True}
     
     id = Column(Integer, primary_key=True)
     user_email = Column(String, index=True)
@@ -54,6 +60,7 @@ class EmailSyncStatus(Base):
 class ContactIntelligence(Base):
     """Stores intelligence about individual contacts"""
     __tablename__ = "contact_intelligence"
+    __table_args__ = {'extend_existing': True}
     
     id = Column(Integer, primary_key=True)
     user_email = Column(String, index=True)

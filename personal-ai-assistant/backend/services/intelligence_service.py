@@ -6,25 +6,46 @@ Handles storage, retrieval, and processing of Chief of Staff data.
 import json
 import logging
 from datetime import datetime, timedelta
-from typing import Dict, List, Any, Optional
+from typing import Dict, Any, List, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from backend.models.database.insights_storage import Base, UserIntelligence, EmailSyncStatus, ContactIntelligence
-from backend.core.claude_integration.email_intelligence import EmailIntelligence
+from models.database.insights_storage import Base, UserIntelligence, EmailSyncStatus, ContactIntelligence
+from core.claude_integration.email_intelligence import EmailIntelligence
+from services.structured_knowledge_service import StructuredKnowledgeService
 from anthropic import Anthropic
 
 logger = logging.getLogger(__name__)
 
+# Create a shared engine and metadata
+_engine = None
+_SessionLocal = None
+
+def get_engine(database_url: str):
+    global _engine
+    if _engine is None:
+        _engine = create_engine(database_url)
+        Base.metadata.create_all(_engine)
+    return _engine
+
+def get_session_local(database_url: str):
+    global _SessionLocal
+    if _SessionLocal is None:
+        engine = get_engine(database_url)
+        _SessionLocal = sessionmaker(bind=engine)
+    return _SessionLocal
+
 class IntelligenceService:
+    """Service for managing user intelligence and insights"""
+    
     def __init__(self, database_url: str, claude_client: Anthropic):
         """Initialize the intelligence service with database and Claude client"""
-        self.engine = create_engine(database_url)
-        Base.metadata.create_all(self.engine)
-        self.SessionLocal = sessionmaker(bind=self.engine)
+        self.engine = get_engine(database_url)
+        self.SessionLocal = get_session_local(database_url)
         self.claude_client = claude_client
         self.email_intelligence = EmailIntelligence(claude_client)
+        self.structured_knowledge_service = StructuredKnowledgeService(self.SessionLocal)
     
     def process_and_store_email_insights(self, user_email: str, access_token: str, days_back: int = 30, force_full_sync: bool = False) -> Dict[str, Any]:
         """
@@ -97,15 +118,27 @@ class IntelligenceService:
                               f"{relationship_count} relationships, {project_count} projects, "
                               f"{action_count} action items, {info_count} information items")
                 
+                # Get structured knowledge to enhance email analysis
+                structured_knowledge = self._get_structured_knowledge_context(user_email)
+                
                 insights = self.email_intelligence.analyze_recent_emails(
                     user_email, 
                     access_token, 
                     actual_days_back, 
-                    previous_insights=existing_insights
+                    previous_insights=existing_insights,
+                    structured_knowledge=structured_knowledge
                 )
             else:
                 logger.info(f"Performing full sync for the last {days_back} days")
-                insights = self.email_intelligence.analyze_recent_emails(user_email, access_token, days_back)
+                # Get structured knowledge to enhance email analysis
+                structured_knowledge = self._get_structured_knowledge_context(user_email)
+                
+                insights = self.email_intelligence.analyze_recent_emails(
+                    user_email, 
+                    access_token, 
+                    days_back,
+                    structured_knowledge=structured_knowledge
+                )
             
             # Process and categorize insights into knowledge repositories
             if insights.get('status') == 'success' or insights.get('key_relationships'):
@@ -123,24 +156,6 @@ class IntelligenceService:
                         }
                         
                         # Also create/update ContactIntelligence record
-                        self._update_contact_intelligence(session, user_email, relationship)
-                
-                user_intel.contacts_knowledge = contacts_knowledge
-                sync_status.progress = 50
-                session.commit()
-                
-                # 2. Update general business knowledge
-                business_knowledge = user_intel.general_business_knowledge or {}
-                for project in insights.get('active_projects', []):
-                    if isinstance(project, dict):
-                        project_name = project.get('name', 'Unknown Project')
-                        business_knowledge[project_name] = {
-                            'description': project.get('description'),
-                            'status': project.get('status'),
-                            'priority': project.get('priority'),
-                            'stakeholders': project.get('key_stakeholders', []),
-                            'last_updated': datetime.utcnow().isoformat()
-                        }
                         self._update_contact_intelligence(session, user_email, relationship)
                 
                 user_intel.contacts_knowledge = contacts_knowledge
@@ -317,12 +332,13 @@ class IntelligenceService:
         finally:
             session.close()
     
-    def _update_contact_intelligence(self, session: Session, user_email: str, relationship_data: Dict):
-        """Update ContactIntelligence record with new data"""
-        contact_email = relationship_data.get('email')
-        if not contact_email:
+    def _update_contact_intelligence(self, session: Session, user_email: str, relationship: Dict[str, Any]) -> None:
+        """Create or update a ContactIntelligence record"""
+        contact_email = relationship.get('email', 'unknown')
+        if contact_email == 'unknown':
             return
-        
+            
+        # Check if contact already exists
         contact = session.query(ContactIntelligence).filter_by(
             user_email=user_email,
             contact_email=contact_email
@@ -331,23 +347,36 @@ class IntelligenceService:
         if not contact:
             contact = ContactIntelligence(
                 user_email=user_email,
-                contact_email=contact_email,
-                contact_name=relationship_data.get('name', 'Unknown')
+                contact_email=contact_email
             )
             session.add(contact)
         
-        # Update with latest data
-        contact.relationship_strength = relationship_data.get('importance', 'Medium')
-        contact.last_interaction = datetime.utcnow()
-        contact.total_interactions += 1
+        # Update contact data
+        contact.name = relationship.get('name')
+        contact.role = relationship.get('role')
+        contact.importance = relationship.get('importance')
+        contact.recent_interactions = relationship.get('recent_interactions')
+        contact.last_updated = datetime.utcnow()
         
-        # Update action items if present
-        if relationship_data.get('action_needed'):
-            action_items = contact.action_items or []
-            action_items.append({
-                'action': relationship_data['action_needed'],
-                'created_at': datetime.utcnow().isoformat()
-            })
-            contact.action_items = action_items
+    def _get_structured_knowledge_context(self, user_email: str) -> Dict[str, Any]:
+        """Gather structured knowledge to enhance email analysis"""
+        # Get projects, goals, and knowledge files
+        projects = self.structured_knowledge_service.get_projects(user_email)
+        goals = self.structured_knowledge_service.get_goals(user_email)
+        knowledge_files = self.structured_knowledge_service.get_knowledge_files(user_email)
         
-        session.commit()
+        # Extract content from knowledge files
+        knowledge_content = []
+        for file in knowledge_files:
+            if file.content_extracted:
+                knowledge_content.append({
+                    'filename': file.original_filename,
+                    'content': file.content_extracted,
+                    'category': file.category
+                })
+        
+        return {
+            'projects': projects,
+            'goals': goals,
+            'knowledge_files': knowledge_content
+        }

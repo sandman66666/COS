@@ -7,6 +7,9 @@ import requests
 from datetime import datetime, timedelta
 from sqlalchemy import create_engine
 from dotenv import load_dotenv
+from werkzeug.utils import secure_filename
+# Import SQLAlchemy components
+from sqlalchemy.orm import sessionmaker
 
 # Add the project root directory to Python's import path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))  
@@ -36,6 +39,12 @@ sync_status = {
 # Initialize Claude client
 from anthropic import Anthropic
 claude_client = Anthropic(api_key=os.environ.get('ANTHROPIC_API_KEY'))
+
+# Initialize database URL
+# Define a global database URL with an absolute path
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATABASE_PATH = os.path.join(BASE_DIR, 'chief_of_staff.db')
+database_url = os.environ.get('DATABASE_URL', f'sqlite:///{DATABASE_PATH}')
 
 def create_app():
     app = Flask(__name__, template_folder='../templates', static_folder='../static')
@@ -167,24 +176,46 @@ def create_app():
         if 'user_email' not in session:
             return redirect(url_for('login'))
         
-        # Check if user has connected Gmail
-        gmail_connected = 'google_oauth_token' in session
-        last_sync = session.get('last_email_sync', 'Never')
+        user_email = session.get('user_email')
         
-        # Get sync status for the current user
+        # Get sync status
         global sync_status
         current_sync_status = None
-        if sync_status.get('user_email') == session.get('user_email'):
+        if sync_status['is_syncing'] and sync_status['user_email'] == user_email:
             current_sync_status = sync_status
         
+        # Initialize intelligence service for this request
+        from services.intelligence_service import IntelligenceService
+        from models.database.insights_storage import UserIntelligence, EmailSyncStatus
+        intelligence_service = IntelligenceService(database_url, claude_client)
+        
+        # Get user preferences
+        session_db = intelligence_service.SessionLocal()
+        try:
+            user_intel = session_db.query(UserIntelligence).filter_by(user_email=user_email).first()
+            preferences = user_intel.personal_knowledge.get('preferences', {}) if user_intel else {}
+        finally:
+            session_db.close()
+        
+        # Initialize structured knowledge service
+        from services.structured_knowledge_service import StructuredKnowledgeService
+        structured_knowledge_service = StructuredKnowledgeService(intelligence_service.SessionLocal)
+        
+        # Get structured knowledge
+        projects = structured_knowledge_service.get_projects(user_email)
+        goals = structured_knowledge_service.get_goals(user_email)
+        knowledge_files = structured_knowledge_service.get_knowledge_files(user_email)
+        
         return render_template('settings.html', 
-                           name=session.get('user_name', 'User'),
-                           gmail_connected=gmail_connected,
-                           last_sync=last_sync,
-                           sync_status=current_sync_status,
-                           email_sync_frequency=session.get('email_sync_frequency', 24),
-                           email_days_back=session.get('email_days_back', 30),
-                           urgent_alerts_enabled=session.get('urgent_alerts_enabled', True))
+                               user_email=user_email,
+                               sync_status=current_sync_status,
+                               preferences=preferences,
+                               projects=projects,
+                               goals=goals,
+                               knowledge_files=knowledge_files,
+                               email_sync_frequency=session.get('email_sync_frequency', 24),
+                               email_days_back=session.get('email_days_back', 30),
+                               urgent_alerts_enabled=session.get('urgent_alerts_enabled', True))
     
     @app.route('/email-insights')
     def email_insights():
@@ -193,9 +224,10 @@ def create_app():
         
         user_email = session['user_email']
         
-        # Initialize intelligence service
-        database_url = os.environ.get('DATABASE_URL', 'sqlite:///chief_of_staff.db')
-        from backend.services.intelligence_service import IntelligenceService
+        # Initialize intelligence service using the global database_url
+        # Initialize intelligence service for this request
+        from services.intelligence_service import IntelligenceService
+        from models.database.insights_storage import UserIntelligence
         intelligence_service = IntelligenceService(database_url, claude_client)
         
         # Check if a sync is in progress for this user
@@ -265,9 +297,10 @@ def create_app():
         
         logger.info(f"Starting email sync for {user_email} with {days_back} days back, force_full_sync={force_full_sync}")
         
-        # Initialize intelligence service
-        database_url = os.environ.get('DATABASE_URL', 'sqlite:///chief_of_staff.db')
-        from backend.services.intelligence_service import IntelligenceService
+        # Initialize intelligence service using the global database_url
+        # Initialize intelligence service for this request
+        from services.intelligence_service import IntelligenceService
+        from models.database.insights_storage import UserIntelligence
         intelligence_service = IntelligenceService(database_url, claude_client)
         
         # Update global sync status
@@ -526,6 +559,229 @@ def create_app():
         }
         
         return jsonify(debug_info)
+    
+    # API routes for structured knowledge
+    @app.route('/api/projects', methods=['GET', 'POST'])
+    def api_projects():
+        if 'user_email' not in session:
+            return jsonify({'error': 'Not authenticated'}), 401
+        
+        user_email = session.get('user_email')
+        
+        # Initialize intelligence service
+        from services.intelligence_service import IntelligenceService
+        intelligence_service = IntelligenceService(database_url, claude_client)
+        
+        # Initialize structured knowledge service
+        from services.structured_knowledge_service import StructuredKnowledgeService
+        structured_knowledge_service = StructuredKnowledgeService(intelligence_service.SessionLocal)
+        
+        if request.method == 'GET':
+            projects = structured_knowledge_service.get_projects(user_email)
+            return jsonify(projects)
+        
+        elif request.method == 'POST':
+            project_data = request.json
+            if not project_data or 'name' not in project_data:
+                return jsonify({'error': 'Project name is required', 'success': False}), 400
+            
+            project = structured_knowledge_service.create_project(user_email, project_data)
+            return jsonify({'success': True, 'project': project})
+    
+    @app.route('/api/projects/<project_id>', methods=['GET', 'PUT', 'DELETE'])
+    def api_project(project_id):
+        if 'user_email' not in session:
+            return jsonify({'error': 'Not authenticated'}), 401
+        
+        user_email = session.get('user_email')
+        
+        # Initialize intelligence service
+        from services.intelligence_service import IntelligenceService
+        intelligence_service = IntelligenceService(database_url, claude_client)
+        
+        # Initialize structured knowledge service
+        from services.structured_knowledge_service import StructuredKnowledgeService
+        structured_knowledge_service = StructuredKnowledgeService(intelligence_service.SessionLocal)
+        
+        if request.method == 'GET':
+            project = structured_knowledge_service.get_project(user_email, project_id)
+            if not project:
+                return jsonify({'error': 'Project not found'}), 404
+            return jsonify(project)
+        
+        elif request.method == 'PUT':
+            project_data = request.json
+            if not project_data:
+                return jsonify({'error': 'No data provided', 'success': False}), 400
+            
+            project = structured_knowledge_service.update_project(user_email, project_id, project_data)
+            if not project:
+                return jsonify({'error': 'Project not found', 'success': False}), 404
+            return jsonify({'success': True, 'project': project})
+        
+        elif request.method == 'DELETE':
+            success = structured_knowledge_service.delete_project(user_email, project_id)
+            if not success:
+                return jsonify({'error': 'Project not found', 'success': False}), 404
+            return jsonify({'success': True})
+    
+    @app.route('/api/goals', methods=['GET', 'POST'])
+    def api_goals():
+        if 'user_email' not in session:
+            return jsonify({'error': 'Not authenticated'}), 401
+        
+        user_email = session.get('user_email')
+        
+        # Initialize intelligence service
+        from services.intelligence_service import IntelligenceService
+        intelligence_service = IntelligenceService(database_url, claude_client)
+        
+        # Initialize structured knowledge service
+        from services.structured_knowledge_service import StructuredKnowledgeService
+        structured_knowledge_service = StructuredKnowledgeService(intelligence_service.SessionLocal)
+        
+        if request.method == 'GET':
+            goals = structured_knowledge_service.get_goals(user_email)
+            return jsonify(goals)
+        
+        elif request.method == 'POST':
+            goal_data = request.json
+            if not goal_data or 'title' not in goal_data:
+                return jsonify({'error': 'Goal title is required', 'success': False}), 400
+            
+            goal = structured_knowledge_service.create_goal(user_email, goal_data)
+            return jsonify({'success': True, 'goal': goal})
+    
+    @app.route('/api/goals/<goal_id>', methods=['GET', 'PUT', 'DELETE'])
+    def api_goal(goal_id):
+        if 'user_email' not in session:
+            return jsonify({'error': 'Not authenticated'}), 401
+        
+        user_email = session.get('user_email')
+        
+        # Initialize intelligence service
+        from services.intelligence_service import IntelligenceService
+        intelligence_service = IntelligenceService(database_url, claude_client)
+        
+        # Initialize structured knowledge service
+        from services.structured_knowledge_service import StructuredKnowledgeService
+        structured_knowledge_service = StructuredKnowledgeService(intelligence_service.SessionLocal)
+        
+        if request.method == 'GET':
+            goal = structured_knowledge_service.get_goal(user_email, goal_id)
+            if not goal:
+                return jsonify({'error': 'Goal not found'}), 404
+            return jsonify(goal)
+        
+        elif request.method == 'PUT':
+            goal_data = request.json
+            if not goal_data:
+                return jsonify({'error': 'No data provided', 'success': False}), 400
+            
+            goal = structured_knowledge_service.update_goal(user_email, goal_id, goal_data)
+            if not goal:
+                return jsonify({'error': 'Goal not found', 'success': False}), 404
+            return jsonify({'success': True, 'goal': goal})
+        
+        elif request.method == 'DELETE':
+            success = structured_knowledge_service.delete_goal(user_email, goal_id)
+            if not success:
+                return jsonify({'error': 'Goal not found', 'success': False}), 404
+            return jsonify({'success': True})
+    
+    @app.route('/api/knowledge-files', methods=['GET', 'POST'])
+    def api_knowledge_files():
+        if 'user_email' not in session:
+            return jsonify({'error': 'Not authenticated'}), 401
+        
+        user_email = session.get('user_email')
+        
+        # Initialize intelligence service
+        from services.intelligence_service import IntelligenceService
+        intelligence_service = IntelligenceService(database_url, claude_client)
+        
+        # Initialize structured knowledge service
+        from services.structured_knowledge_service import StructuredKnowledgeService
+        structured_knowledge_service = StructuredKnowledgeService(intelligence_service.SessionLocal)
+        
+        if request.method == 'GET':
+            files = structured_knowledge_service.get_knowledge_files(user_email)
+            return jsonify(files)
+        
+        elif request.method == 'POST':
+            if 'file' not in request.files:
+                return jsonify({'error': 'No file part', 'success': False}), 400
+            
+            file = request.files['file']
+            if file.filename == '':
+                return jsonify({'error': 'No selected file', 'success': False}), 400
+            
+            if not structured_knowledge_service.allowed_file(file.filename):
+                return jsonify({'error': 'File type not allowed', 'success': False}), 400
+            
+            description = request.form.get('description', '')
+            category = request.form.get('category', 'general')
+            
+            # Initialize structured knowledge service for this request
+            from services.structured_knowledge_service import StructuredKnowledgeService
+            structured_knowledge_service = StructuredKnowledgeService(intelligence_service.SessionLocal)
+            file_data = structured_knowledge_service.upload_knowledge_file(user_email, file, description, category)
+            
+            if not file_data:
+                return jsonify({'error': 'Failed to upload file', 'success': False}), 500
+            
+            return jsonify({'success': True, 'file': file_data})
+    
+    @app.route('/api/knowledge-files/<file_id>', methods=['GET', 'DELETE'])
+    def api_knowledge_file(file_id):
+        if 'user_email' not in session:
+            return jsonify({'error': 'Not authenticated'}), 401
+        
+        user_email = session.get('user_email')
+        
+        # Initialize intelligence service
+        from services.intelligence_service import IntelligenceService
+        intelligence_service = IntelligenceService(database_url, claude_client)
+        
+        # Initialize structured knowledge service
+        from services.structured_knowledge_service import StructuredKnowledgeService
+        structured_knowledge_service = StructuredKnowledgeService(intelligence_service.SessionLocal)
+        
+        if request.method == 'GET':
+            file_data = structured_knowledge_service.get_knowledge_file(user_email, file_id)
+            if not file_data:
+                return jsonify({'error': 'File not found'}), 404
+            return jsonify(file_data)
+        
+        elif request.method == 'DELETE':
+            success = structured_knowledge_service.delete_knowledge_file(user_email, file_id)
+            if not success:
+                return jsonify({'error': 'File not found', 'success': False}), 404
+            return jsonify({'success': True})
+    
+    @app.route('/api/knowledge-files/<file_id>/view', methods=['GET'])
+    def api_view_knowledge_file(file_id):
+        if 'user_email' not in session:
+            return jsonify({'error': 'Not authenticated'}), 401
+        
+        user_email = session.get('user_email')
+        
+        # Initialize intelligence service for this request
+        from services.intelligence_service import IntelligenceService
+        intelligence_service = IntelligenceService(database_url, claude_client)
+        
+        # Get file data from database
+        session_db = intelligence_service.SessionLocal()
+        try:
+            file = session_db.query(KnowledgeFile).filter_by(user_email=user_email, id=file_id).first()
+            if not file or not os.path.exists(file.file_path):
+                return jsonify({'error': 'File not found'}), 404
+            
+            return send_file(file.file_path, 
+                           download_name=file.original_filename,
+                           as_attachment=False)
+        finally:
+            session_db.close()
     
     return app
 
