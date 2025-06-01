@@ -1,0 +1,492 @@
+import os
+import time
+import pathlib
+import secrets
+import requests
+from datetime import datetime, timedelta
+from dotenv import load_dotenv
+load_dotenv()  # Load environment variables from .env file
+
+from flask import Flask, session, render_template, redirect, url_for, request, jsonify
+from flask_session import Session
+from werkzeug.middleware.proxy_fix import ProxyFix
+import tempfile
+import logging
+import threading
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Global variables for tracking sync status
+sync_status = {
+    'is_syncing': False,
+    'progress': 0,
+    'user_email': '',
+    'sync_type': '',
+    'last_sync': None,
+    'email_insights': None
+}
+
+# Initialize Claude client
+from anthropic import Anthropic
+claude_client = Anthropic(api_key=os.environ.get('ANTHROPIC_API_KEY'))
+
+def create_app():
+    app = Flask(__name__, template_folder='../templates', static_folder='../static')
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
+    
+    # Configure Flask session
+    app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-key-for-testing')
+    app.config['SESSION_TYPE'] = 'filesystem'
+    
+    # Create a dedicated directory for session files
+    session_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'flask_session')
+    os.makedirs(session_dir, exist_ok=True)
+    app.config['SESSION_FILE_DIR'] = session_dir
+    
+    app.config['SESSION_PERMANENT'] = True
+    app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=7)
+    Session(app)
+    
+    # Google OAuth configuration
+    GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID')
+    GOOGLE_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET')
+    GOOGLE_AUTH_URI = 'https://accounts.google.com/o/oauth2/auth'
+    GOOGLE_TOKEN_URI = 'https://oauth2.googleapis.com/token'
+    GOOGLE_REDIRECT_URI = 'http://127.0.0.1:8080/login/google/authorized'
+    
+    @app.route('/')
+    def index():
+        return render_template('index.html', name=session.get('user_name', 'User'))
+    
+    @app.route('/login')
+    def login():
+        # Only clear session if user is not already logged in
+        if 'user_email' not in session or 'google_oauth_token' not in session:
+            logger.info("User not logged in, clearing any partial session data")
+            for key in list(session.keys()):
+                if key.startswith('google_') or key in ['user_name', 'user_email']:
+                    del session[key]
+        else:
+            logger.info(f"User already logged in as {session.get('user_email')}")
+            return redirect(url_for('settings'))
+        
+        # Generate a secure state token
+        state = secrets.token_urlsafe(16)
+        session['oauth_state'] = state
+        
+        # Build the authorization URL
+        auth_params = {
+            'client_id': GOOGLE_CLIENT_ID,
+            'redirect_uri': GOOGLE_REDIRECT_URI,
+            'scope': 'openid email profile https://www.googleapis.com/auth/gmail.readonly',
+            'access_type': 'offline',
+            'response_type': 'code',
+            'state': state,
+            'prompt': 'consent'
+        }
+        
+        auth_url = f"{GOOGLE_AUTH_URI}?" + '&'.join([f"{k}={v}" for k, v in auth_params.items()])
+        logger.info("Starting OAuth flow with state: " + state)
+        return redirect(auth_url)
+    
+    @app.route('/login/google/authorized')
+    def authorized():
+        # Verify state parameter to prevent CSRF
+        state = request.args.get('state')
+        stored_state = session.get('oauth_state')
+        
+        if not state or state != stored_state:
+            logger.error(f"State mismatch: received {state}, expected {stored_state}")
+            return redirect(url_for('index'))
+        
+        # Clear the state from session
+        if 'oauth_state' in session:
+            del session['oauth_state']
+        
+        # Exchange authorization code for tokens
+        code = request.args.get('code')
+        if not code:
+            logger.error("No authorization code received")
+            return redirect(url_for('index'))
+        
+        token_params = {
+            'client_id': GOOGLE_CLIENT_ID,
+            'client_secret': GOOGLE_CLIENT_SECRET,
+            'code': code,
+            'grant_type': 'authorization_code',
+            'redirect_uri': GOOGLE_REDIRECT_URI
+        }
+        
+        try:
+            token_response = requests.post(GOOGLE_TOKEN_URI, data=token_params)
+            token_data = token_response.json()
+            
+            if 'error' in token_data:
+                logger.error(f"Error exchanging code for token: {token_data['error']}")
+                return redirect(url_for('index'))
+            
+            # Store the token in session
+            session['google_oauth_token'] = token_data
+            
+            # Get user info
+            user_info_response = requests.get(
+                'https://www.googleapis.com/oauth2/v3/userinfo',
+                headers={'Authorization': f"Bearer {token_data['access_token']}"}
+            )
+            user_info = user_info_response.json()
+            
+            session['user_name'] = user_info.get('name', 'User')
+            session['user_email'] = user_info.get('email', '')
+            
+            # Set default preferences
+            if 'email_sync_frequency' not in session:
+                session['email_sync_frequency'] = 24  # Default to daily
+            if 'email_days_back' not in session:
+                session['email_days_back'] = 30  # Default to 30 days
+            if 'urgent_alerts_enabled' not in session:
+                session['urgent_alerts_enabled'] = True  # Enable by default
+            
+            logger.info(f"User authenticated: {session['user_email']}")
+            return redirect(url_for('settings'))
+            
+        except Exception as e:
+            logger.error(f"Error in OAuth flow: {str(e)}")
+            return redirect(url_for('index'))
+    
+    @app.route('/chat')
+    def chat():
+        if 'user_email' not in session:
+            return redirect(url_for('login'))
+        return render_template('chat.html', name=session.get('user_name', 'User'))
+    
+    @app.route('/settings')
+    def settings():
+        if 'user_email' not in session:
+            return redirect(url_for('login'))
+        
+        # Check if Gmail is connected
+        gmail_connected = 'google_oauth_token' in session
+        
+        # Get last sync time
+        last_sync = session.get('last_email_sync', None)
+        
+        # Get sync status for the current user
+        current_sync_status = None
+        if sync_status.get('user_email') == session.get('user_email'):
+            current_sync_status = {
+                'is_syncing': sync_status.get('is_syncing', False),
+                'progress': sync_status.get('progress', 0),
+                'sync_type': sync_status.get('sync_type', '')
+            }
+        
+        # Get user preferences
+        email_sync_frequency = session.get('email_sync_frequency', 24)
+        email_days_back = session.get('email_days_back', 30)
+        urgent_alerts_enabled = session.get('urgent_alerts_enabled', True)
+        
+        return render_template('settings.html', 
+                               name=session.get('user_name', 'User'),
+                               email=session.get('user_email', ''),
+                               gmail_connected=gmail_connected,
+                               last_sync=last_sync,
+                               sync_status=current_sync_status,
+                               email_sync_frequency=email_sync_frequency,
+                               email_days_back=email_days_back,
+                               urgent_alerts_enabled=urgent_alerts_enabled)
+    
+    @app.route('/email-insights')
+    def email_insights():
+        if 'user_email' not in session:
+            logger.warning("User not authenticated, redirecting to login")
+            return redirect(url_for('login'))
+        
+        # Check if we need to sync first
+        last_sync = session.get('last_email_sync')
+        logger.info(f"Last sync from session: {last_sync}")
+        if not last_sync:
+            logger.warning("No last_sync in session, redirecting to settings")
+            return redirect(url_for('settings'))
+        
+        # Get insights from sync_status if available for this user
+        user_email = session.get('user_email')
+        insights = None
+        
+        logger.info(f"sync_status keys: {list(sync_status.keys())}")
+        logger.info(f"sync_status user_email: {sync_status.get('user_email')}, current user: {user_email}")
+        logger.info(f"'email_insights' in sync_status: {'email_insights' in sync_status}")
+        logger.info(f"'email_insights' in session: {'email_insights' in session}")
+        
+        if sync_status.get('user_email') == user_email and 'email_insights' in sync_status:
+            insights = sync_status.get('email_insights')
+            session['email_insights'] = insights
+            logger.info(f"Using email insights from sync_status: {type(insights)}")
+            if insights:
+                logger.info(f"Insights keys: {list(insights.keys()) if isinstance(insights, dict) else 'not a dict'}")
+        elif 'email_insights' in session:
+            # Use insights from session if available
+            insights = session['email_insights']
+            logger.info(f"Using email insights from session: {type(insights)}")
+            if insights:
+                logger.info(f"Insights keys: {list(insights.keys()) if isinstance(insights, dict) else 'not a dict'}")
+        else:
+            # If no insights available, redirect to settings
+            logger.warning("No insights available, redirecting to settings")
+            return redirect(url_for('settings'))
+        
+        return render_template('email_insights.html', 
+                               name=session.get('user_name', 'User'),
+                               email=user_email,
+                               insights=insights,
+                               last_sync=last_sync)
+    
+    @app.route('/logout')
+    def logout():
+        session.clear()
+        return redirect(url_for('index'))
+    
+    @app.route('/sync-emails', methods=['GET', 'POST'])
+    def sync_emails():
+        global sync_status
+        logger.info(f"Sync emails route called with method: {request.method}")
+        
+        if 'user_email' not in session or 'google_oauth_token' not in session:
+            logger.warning("User not authenticated, redirecting to login")
+            return redirect(url_for('login'))
+            
+        user_email = session['user_email']
+        access_token = session['google_oauth_token']['access_token']
+        days_back = session.get('email_days_back', 30)
+        
+        logger.info(f"Starting email sync for {user_email} with {days_back} days back")
+        
+        # Initialize sync status
+        sync_status['is_syncing'] = True
+        sync_status['progress'] = 0
+        sync_status['user_email'] = user_email
+        sync_status['sync_type'] = 'Email Intelligence'
+        
+        # Copy session data to local variables before starting the thread
+        # to avoid "working outside of request context" errors
+        user_email_copy = user_email
+        access_token_copy = access_token
+        days_back_copy = days_back
+        user_name_copy = session.get('user_name', 'User')
+        
+        # Start sync in background thread
+        def run_sync():
+            global sync_status
+            try:
+                logger.info("Starting email sync in background thread")
+                
+                # Initialize the EmailIntelligence module
+                import sys
+                import os
+                # Add the project root to the Python path
+                sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+                
+                # Update progress
+                sync_status['progress'] = 10
+                logger.info(f"Sync progress: 10%")
+                
+                # Import the EmailIntelligence class
+                from backend.core.claude_integration.email_intelligence import EmailIntelligence
+                
+                # Initialize email intelligence module
+                email_intelligence = EmailIntelligence(claude_client)
+                sync_status['progress'] = 30
+                logger.info(f"Sync progress: 30%")
+                
+                # Simulate progress updates
+                for i in range(4, 8):
+                    time.sleep(1)  # Simulate work
+                    sync_status['progress'] = i * 10
+                    logger.info(f"Sync progress: {i * 10}%")
+                
+                # Analyze emails using the native Gmail API via GmailConnector
+                logger.info(f"Using access token of length: {len(access_token_copy) if access_token_copy else 'None'} to fetch emails")
+                
+                # Validate token format
+                if access_token_copy and len(access_token_copy) > 20:  # Simple validation that token exists and has reasonable length
+                    logger.info("Access token validation passed, proceeding with email analysis")
+                    insights = email_intelligence.analyze_recent_emails(user_email_copy, access_token_copy, days_back=days_back_copy)
+                else:
+                    logger.error(f"Invalid access token format for {user_email_copy}")
+                    insights = {
+                        "status": "error",
+                        "message": "Invalid or missing access token. Please re-authenticate with Gmail."
+                    }
+                
+                sync_status['progress'] = 80
+                logger.info(f"Sync progress: 80%")
+                
+                # Log the insights structure
+                logger.info(f"Insights type: {type(insights)}")
+                if isinstance(insights, dict):
+                    logger.info(f"Insights keys: {list(insights.keys())}")
+                    
+                    # Make sure insights has a status field
+                    if 'status' not in insights:
+                        insights['status'] = 'success'
+                    
+                    # Store real insights in sync_status
+                    sync_status['email_insights'] = insights
+                    sync_status['last_sync'] = datetime.now().strftime("%Y-%m-%d %H:%M")
+                    sync_status['progress'] = 100
+                    
+                    # Also update session directly
+                    try:
+                        with app.app_context():
+                            from flask import session as flask_session
+                            flask_session['email_insights'] = insights
+                            flask_session['last_email_sync'] = sync_status['last_sync']
+                            logger.info("Updated session with insights data")
+                    except Exception as session_err:
+                        logger.error(f"Could not update session from thread: {str(session_err)}")
+                    
+                    logger.info("Email sync completed successfully with real data")
+                else:
+                    logger.error(f"Invalid insights format: {insights}")
+                    sync_status['status'] = 'failed'
+                    sync_status['email_insights'] = {'status': 'success', 'message': 'No emails found in the specified time period'}
+            
+            except Exception as e:
+                logger.error(f"Error in background sync thread: {str(e)}")
+                sync_status['status'] = 'failed'
+                sync_status['email_insights'] = {'status': 'failed', 'message': f'Error: {str(e)}'}
+            finally:
+                # Always mark sync as complete in finally block
+                sync_status['is_syncing'] = False
+            
+        # Start sync thread
+        sync_thread = threading.Thread(target=run_sync)
+        sync_thread.daemon = True
+        sync_thread.start()
+        logger.info("Sync thread started successfully")
+            
+        # Redirect to sync progress page
+        return render_template('sync_in_progress.html',
+                             name=session.get('user_name', 'User'),
+                             sync_type='Email Intelligence',
+                             progress=0)
+    
+    @app.route('/get-sync-status')
+    def get_sync_status():
+        if 'user_email' not in session:
+            return redirect(url_for('login'))
+                
+        # Only return sync status for the current user
+        if sync_status.get('user_email') == session.get('user_email'):
+            return jsonify({
+                'is_syncing': sync_status.get('is_syncing', False),
+                'progress': sync_status.get('progress', 0),
+                'sync_type': sync_status.get('sync_type', '')
+            })
+        else:
+            return jsonify({
+                'is_syncing': False,
+                'progress': 0,
+                'sync_type': ''
+            })
+    
+    @app.route('/save-preferences', methods=['POST'])
+    def save_preferences():
+        if 'user_email' not in session:
+            return jsonify({'success': False, 'error': 'Not authenticated'}), 401
+                
+        try:
+            data = request.get_json()
+                
+            # Update session with new preferences
+            session['email_sync_frequency'] = int(data.get('email_sync_frequency', 24))
+            session['email_days_back'] = int(data.get('email_days_back', 30))
+            session['urgent_alerts_enabled'] = bool(data.get('urgent_alerts_enabled', True))
+                
+            return jsonify({'success': True})
+        except Exception as e:
+            logger.error(f"Error saving preferences: {str(e)}")
+            return jsonify({'success': False, 'error': str(e)}), 500
+                
+    @app.route('/disconnect-gmail')
+    def disconnect_gmail():
+        if 'google_oauth_token' in session:
+            del session['google_oauth_token']
+        if 'last_email_sync' in session:
+            del session['last_email_sync']
+                
+        # Redirect to settings page
+        return redirect(url_for('settings'))
+            
+    @app.route('/api/sync-status')
+    def api_sync_status():
+        global sync_status
+            
+        if 'user_email' not in session:
+            logger.warning("User not authenticated in api_sync_status")
+            return jsonify({'error': 'Not authenticated'}), 401
+                
+        current_user = session.get('user_email')
+        logger.info(f"api_sync_status called for user: {current_user}")
+        logger.info(f"sync_status user_email: {sync_status.get('user_email')}")
+        logger.info(f"sync_status progress: {sync_status.get('progress')}")
+        logger.info(f"sync_status is_syncing: {sync_status.get('is_syncing')}")
+            
+        # Only return sync status for the current user
+        if sync_status.get('user_email') == current_user:
+            # If sync is complete, update session with insights
+            if not sync_status.get('is_syncing') and sync_status.get('progress') == 100:
+                insights = sync_status.get('email_insights')
+                if insights:
+                    logger.info(f"Updating session with insights of type: {type(insights)}")
+                    if isinstance(insights, dict):
+                        logger.info(f"Insights keys: {list(insights.keys())}")
+                    session['email_insights'] = insights
+                    session['last_email_sync'] = sync_status.get('last_sync', datetime.now().strftime("%Y-%m-%d %H:%M"))
+                    logger.info(f"Session updated with insights and last_sync: {session['last_email_sync']}")
+                else:
+                    logger.warning("No insights found in sync_status to update session")
+            
+            return jsonify({
+                'is_syncing': sync_status.get('is_syncing', False),
+                'progress': sync_status.get('progress', 0),
+                'sync_type': sync_status.get('sync_type', ''),
+                'redirect': '/email-insights' if not sync_status.get('is_syncing') and sync_status.get('progress') == 100 else None
+            })
+        else:
+            # No sync status for this user
+            logger.warning(f"No sync status for user {current_user}")
+            return jsonify({
+                'is_syncing': False,
+                'progress': 0,
+                'sync_type': '',
+                'redirect': '/settings'
+            })
+            
+    @app.route('/api/email-insights')
+    def api_email_insights():
+        if 'user_email' not in session:
+            return jsonify({'error': 'Not authenticated'}), 401
+                
+        # Check if we need to sync first
+        last_sync = session.get('last_email_sync')
+        if not last_sync:
+            return jsonify({
+                'status': 'no_data',
+                'message': 'No email insights available yet. Please sync your emails first.'
+            })
+            
+        # Get insights from session
+        insights = session.get('email_insights', {})
+            
+        # Add last sync time to the response
+        insights['last_sync'] = last_sync
+        insights['status'] = 'success'
+            
+        return jsonify(insights)
+    
+    return app
+
+if __name__ == '__main__':
+    app = create_app()
+    app.run(host='0.0.0.0', port=8080, debug=True)

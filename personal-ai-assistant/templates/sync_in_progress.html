@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sync in Progress | AI Chief of Staff</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f8f9fa;
+            color: #212529;
+        }
+        .sync-container {
+            max-width: 700px;
+            margin: 100px auto;
+            background-color: #fff;
+            border-radius: 10px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            padding: 2rem;
+            text-align: center;
+        }
+        .sync-icon {
+            font-size: 4rem;
+            color: #4a6fdc;
+            margin-bottom: 1.5rem;
+            animation: pulse 1.5s infinite;
+        }
+        @keyframes pulse {
+            0% {
+                transform: scale(1);
+                opacity: 1;
+            }
+            50% {
+                transform: scale(1.1);
+                opacity: 0.8;
+            }
+            100% {
+                transform: scale(1);
+                opacity: 1;
+            }
+        }
+        .progress {
+            height: 15px;
+            margin: 2rem 0;
+        }
+        h1 {
+            font-weight: 600;
+            margin-bottom: 1rem;
+        }
+        .nav-link {
+            color: #4a6fdc;
+        }
+        .nav-link:hover {
+            color: #3a5bb9;
+        }
+        .sync-details {
+            margin: 2rem 0;
+            color: #6c757d;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-light bg-light mb-4">
+        <div class="container">
+            <a class="navbar-brand" href="/">AI Chief of Staff</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/">Home</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/chat">Chat</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/email-insights">Email Insights</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/settings">Settings</a>
+                    </li>
+                </ul>
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/logout">Logout</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="sync-container">
+            <i class="bi bi-arrow-repeat sync-icon"></i>
+            <h1>{{ sync_type }} Sync in Progress</h1>
+            <p class="lead">We're analyzing your emails to provide you with intelligent insights.</p>
+            
+            <div class="progress">
+                <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                     role="progressbar" 
+                     style="width: {{ progress }}%;" 
+                     aria-valuenow="{{ progress }}" 
+                     aria-valuemin="0" 
+                     aria-valuemax="100">{{ progress }}%</div>
+            </div>
+            
+            <div class="sync-details">
+                <p>This may take a few minutes. Please don't close this page.</p>
+                <p>We're processing your data to provide personalized insights.</p>
+            </div>
+            
+            <a href="/settings" class="btn btn-outline-secondary">Go to Settings</a>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Check sync status periodically
+        function checkSyncStatus() {
+            fetch('/api/sync-status')
+            .then(response => response.json())
+            .then(data => {
+                if (data.is_syncing) {
+                    document.querySelector('.progress-bar').style.width = data.progress + '%';
+                    document.querySelector('.progress-bar').setAttribute('aria-valuenow', data.progress);
+                    document.querySelector('.progress-bar').textContent = data.progress + '%';
+                    setTimeout(checkSyncStatus, 2000);
+                } else {
+                    // If API provides a redirect URL, use it, otherwise go to email-insights
+                    if (data.redirect) {
+                        window.location.href = data.redirect;
+                    } else {
+                        window.location.href = '/email-insights';
+                    }
+                }
+            });
+        }
+        
+        // Start checking sync status
+        setTimeout(checkSyncStatus, 2000);
+    </script>
+</body>
+</html>

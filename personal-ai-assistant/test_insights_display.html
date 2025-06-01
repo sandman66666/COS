@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Insights Display</title>
+</head>
+<body>
+    <h1>Email Insights Test</h1>
+    
+    <h2>1. Fetch Session Data</h2>
+    <button onclick="fetchDebugData()">Get Debug Info</button>
+    <pre id="debug-output"></pre>
+    
+    <h2>2. Test Chat with Email Question</h2>
+    <input type="text" id="chat-input" value="Can you see my emails? What are my key relationships?" style="width: 500px;">
+    <button onclick="testChat()">Send to Chat</button>
+    <pre id="chat-output"></pre>
+    
+    <h2>3. Raw Insights Data</h2>
+    <button onclick="fetchInsights()">Get Raw Insights</button>
+    <pre id="insights-output"></pre>
+    
+    <script>
+        async function fetchDebugData() {
+            try {
+                const response = await fetch('/api/debug-session');
+                const data = await response.json();
+                document.getElementById('debug-output').textContent = JSON.stringify(data, null, 2);
+            } catch (error) {
+                document.getElementById('debug-output').textContent = 'Error: ' + error.message;
+            }
+        }
+        
+        async function testChat() {
+            try {
+                const message = document.getElementById('chat-input').value;
+                const response = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({message: message})
+                });
+                const data = await response.json();
+                document.getElementById('chat-output').textContent = data.response || data.error;
+            } catch (error) {
+                document.getElementById('chat-output').textContent = 'Error: ' + error.message;
+            }
+        }
+        
+        async function fetchInsights() {
+            try {
+                const response = await fetch('/api/email-insights');
+                const data = await response.json();
+                document.getElementById('insights-output').textContent = JSON.stringify(data, null, 2);
+            } catch (error) {
+                document.getElementById('insights-output').textContent = 'Error: ' + error.message;
+            }
+        }
+    </script>
+</body>
+</html> 

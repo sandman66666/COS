@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from dotenv import load_dotenv
 load_dotenv()  # Load environment variables from .env file
 
-from flask import Flask, session, render_template, redirect, url_for, request, jsonify, send_file
+from flask import Flask, session, render_template, redirect, url_for, request, jsonify
 from flask_session import Session
 from werkzeug.middleware.proxy_fix import ProxyFix
 import tempfile
@@ -223,17 +223,6 @@ def create_app():
                 insights = email_intelligence.analyze_recent_emails(user_email, access_token, days_back=30)
                 session['email_insights'] = insights
             
-            # Debug logging
-            logger.info(f"Insights keys: {list(insights.keys())}")
-            logger.info(f"Key relationships count: {len(insights.get('key_relationships', []))}")
-            logger.info(f"Active projects count: {len(insights.get('active_projects', []))}")
-            logger.info(f"Action items count: {len(insights.get('action_items', []))}")
-            logger.info(f"Important info count: {len(insights.get('important_information', []))}")
-            
-            # Log first item of each category if available
-            if insights.get('key_relationships'):
-                logger.info(f"First relationship: {insights['key_relationships'][0]}")
-            
             # Format the insights for display
             formatted_insights = f"""<div class='card mb-4'>
                 <div class='card-header bg-primary text-white'>
@@ -256,17 +245,10 @@ def create_app():
                     if isinstance(relationship, dict):
                         name = relationship.get('name', 'Unknown')
                         email = relationship.get('email', '')
-                        role = relationship.get('role', '')
-                        importance = relationship.get('importance', '')
-                        recent = relationship.get('recent_interactions', '')
-                        action = relationship.get('action_needed', '')
-                        
+                        context = relationship.get('context', '')
                         formatted_insights += f"""<li class='list-group-item'>
                             <strong>{name}</strong> {f"<span class='text-muted'>({email})</span>" if email else ""}
-                            {f"<br><small class='text-muted'>Role: {role}</small>" if role else ""}
-                            {f"<br><span class='badge bg-{('danger' if importance == 'High' else 'warning' if importance == 'Medium' else 'secondary')}'>{importance} Priority</span>" if importance else ""}
-                            {f"<br><p class='mb-0'>Recent: {recent}</p>" if recent else ""}
-                            {f"<br><p class='mb-0 text-danger'><strong>Action Needed:</strong> {action}</p>" if action else ""}
+                            <p class='mb-0'>{context}</p>
                         </li>"""
                     else:
                         formatted_insights += f"<li class='list-group-item'>{relationship}</li>"
@@ -289,20 +271,9 @@ def create_app():
                     if isinstance(project, dict):
                         name = project.get('name', 'Unknown')
                         description = project.get('description', '')
-                        status = project.get('status', '')
-                        priority = project.get('priority', '')
-                        stakeholders = project.get('key_stakeholders', [])
-                        recent_dev = project.get('recent_developments', '')
-                        next_steps = project.get('next_steps', '')
-                        
                         formatted_insights += f"""<li class='list-group-item'>
                             <strong>{name}</strong>
-                            {f"<span class='badge bg-{('danger' if priority == 'High' else 'warning' if priority == 'Medium' else 'info')}'>{priority} Priority</span>" if priority else ""}
-                            {f"<span class='badge bg-secondary ms-2'>{status}</span>" if status else ""}
-                            <p class='mb-1'>{description}</p>
-                            {f"<small class='text-muted'>Stakeholders: {', '.join(stakeholders)}</small><br>" if stakeholders else ""}
-                            {f"<p class='mb-1'><strong>Recent:</strong> {recent_dev}</p>" if recent_dev else ""}
-                            {f"<p class='mb-0 text-primary'><strong>Next Steps:</strong> {next_steps}</p>" if next_steps else ""}
+                            <p class='mb-0'>{description}</p>
                         </li>"""
                     else:
                         formatted_insights += f"<li class='list-group-item'>{project}</li>"
@@ -324,19 +295,10 @@ def create_app():
                 for action in insights.get('action_items', []):
                     if isinstance(action, dict):
                         description = action.get('description', 'Unknown')
-                        context = action.get('context', '')
                         deadline = action.get('deadline', '')
-                        related_to = action.get('related_to', '')
-                        priority = action.get('priority', '')
-                        status = action.get('status', 'Pending')
-                        
                         formatted_insights += f"""<li class='list-group-item'>
                             <strong>{description}</strong>
-                            {f"<span class='badge bg-{('danger' if priority == 'High' else 'warning' if priority == 'Medium' else 'info')} ms-2'>{priority}</span>" if priority else ""}
-                            {f"<span class='badge bg-warning text-dark ms-2'>Due: {deadline}</span>" if deadline else ""}
-                            {f"<br><small class='text-muted'>Context: {context}</small>" if context else ""}
-                            {f"<br><small class='text-muted'>Related to: {related_to}</small>" if related_to else ""}
-                            {f"<br><span class='badge bg-secondary'>{status}</span>" if status else ""}
+                            {f"<span class='badge bg-warning text-dark'>Due: {deadline}</span>" if deadline else ""}
                         </li>"""
                     else:
                         formatted_insights += f"<li class='list-group-item'>{action}</li>"
@@ -357,21 +319,8 @@ def create_app():
             if insights.get('important_information'):
                 for info in insights.get('important_information', []):
                     if isinstance(info, dict):
-                        topic = info.get('topic', '')
-                        details = info.get('details', '')
-                        source = info.get('source', '')
-                        date = info.get('date', '')
-                        relevance = info.get('relevance', '')
-                        related_to = info.get('related_to', '')
-                        
-                        formatted_insights += f"""<li class='list-group-item'>
-                            {f"<strong>{topic}</strong><br>" if topic else ""}
-                            {f"{details}" if details else info.get('description', '')}
-                            {f"<br><small class='text-muted'>Source: {source}</small>" if source else ""}
-                            {f"<br><small class='text-muted'>Date: {date}</small>" if date else ""}
-                            {f"<br><small class='text-primary'>Relevance: {relevance}</small>" if relevance else ""}
-                            {f"<br><small class='text-muted'>Related to: {related_to}</small>" if related_to else ""}
-                        </li>"""
+                        description = info.get('description', '')
+                        formatted_insights += f"<li class='list-group-item'>{description}</li>"
                     else:
                         formatted_insights += f"<li class='list-group-item'>{info}</li>"
             else:
@@ -434,52 +383,51 @@ def create_app():
             try:
                 logger.info("Starting email sync in background thread")
                 
-                # Import EmailIntelligence module
-                import sys
-                import os
-                sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-                from backend.core.claude_integration.email_intelligence import EmailIntelligence
+                # Simulate progress updates
+                for progress in [10, 20, 30, 40, 50, 60, 70, 80, 90]:
+                    sync_status['progress'] = progress
+                    logger.info(f"Sync progress: {progress}%")
+                    time.sleep(1)  # Simulate work being done
                 
-                # Update progress
-                sync_status['progress'] = 10
-                logger.info(f"Sync progress: 10%")
+                # Generate sample insights
+                sample_insights = {
+                    "recent_emails": {
+                        "key_metrics": {
+                            "total_emails": 120,
+                            "sent": 45,
+                            "received": 75,
+                            "response_rate": "85%",
+                            "avg_response_time": "3.5 hours"
+                        },
+                        "top_senders": [
+                            {"name": "John Smith", "email": "john@example.com", "count": 15},
+                            {"name": "Sarah Johnson", "email": "sarah@example.com", "count": 12},
+                            {"name": "Team Notifications", "email": "notifications@example.com", "count": 10}
+                        ],
+                        "top_domains": [
+                            {"domain": "example.com", "count": 35},
+                            {"domain": "gmail.com", "count": 22},
+                            {"domain": "company.org", "count": 18}
+                        ],
+                        "busiest_times": {
+                            "day_of_week": "Tuesday",
+                            "time_of_day": "10:00 AM - 12:00 PM"
+                        }
+                    }
+                }
                 
-                # Initialize email intelligence module
-                email_intelligence = EmailIntelligence(claude_client)
-                sync_status['progress'] = 20
-                logger.info(f"Sync progress: 20%")
-                
-                # Analyze real emails
-                logger.info(f"Analyzing emails for {user_email_copy} with access token")
-                insights = email_intelligence.analyze_recent_emails(
-                    user_email_copy, 
-                    access_token_copy, 
-                    days_back=days_back_copy
-                )
-                
-                sync_status['progress'] = 90
-                logger.info(f"Sync progress: 90%")
-                
-                # Store insights in sync_status
-                sync_status['email_insights'] = insights
+                # Store insights in both sync_status and session
+                sync_status['email_insights'] = sample_insights
                 sync_status['last_sync'] = datetime.now().strftime("%Y-%m-%d %H:%M")
                 sync_status['progress'] = 100
                 
-                logger.info(f"Email sync completed successfully. Insights status: {insights.get('status', 'unknown')}")
-                if insights.get('status') == 'error':
-                    logger.error(f"Error in insights: {insights.get('message', 'Unknown error')}")
+                # We can't directly access the session from a background thread
+                # The user will need to refresh the page to see the insights
+                logger.info("Email sync completed successfully")
                 
             except Exception as e:
                 logger.error(f"Error in background sync thread: {str(e)}")
                 sync_status['status'] = 'failed'
-                sync_status['email_insights'] = {
-                    'status': 'error',
-                    'message': f'Failed to analyze emails: {str(e)}',
-                    'key_relationships': [],
-                    'active_projects': [],
-                    'action_items': [],
-                    'important_information': []
-                }
             finally:
                 # Always mark sync as complete in finally block
                 sync_status['is_syncing'] = False
@@ -496,6 +444,121 @@ def create_app():
                              sync_type='Email Intelligence',
                              progress=0)
             
+        # Copy session data to local variables before starting the thread
+        # to avoid "working outside of request context" errors
+        user_email_copy = user_email
+        access_token_copy = access_token
+        days_back_copy = days_back
+        user_name_copy = session.get('user_name', 'User')
+        
+        # Start sync in background thread
+        def run_sync():
+            global sync_status
+            logger.info("Background sync thread started")
+            sync_status['is_syncing'] = True
+            sync_status['progress'] = 0
+            sync_status['user_email'] = user_email_copy
+            sync_status['sync_type'] = 'Email Intelligence'
+            logger.info(f"Sync status initialized: {sync_status}")
+            
+            try:
+                # Initialize the EmailIntelligence module
+                import sys
+                import os
+                # Add the project root to the Python path
+                sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+                
+                from backend.core.claude_integration.email_intelligence import EmailIntelligence
+                
+                # Update progress
+                sync_status['progress'] = 10
+                time.sleep(1)  # Simulate work
+                
+                # Initialize email intelligence module
+                email_intelligence = EmailIntelligence(claude_client)
+                
+                # Analyze emails
+                sync_status['progress'] = 30
+                insights = email_intelligence.analyze_recent_emails(user_email_copy, access_token_copy, days_back=days_back_copy)
+                
+                # Store insights in global variable instead of session
+                # We'll copy this to the session when the user views the email-insights page
+                sync_status['email_insights'] = insights
+                
+                # Update progress
+                sync_status['progress'] = 80
+                time.sleep(1)  # Simulate work
+                
+                # Complete
+                sync_status['progress'] = 100
+                sync_status['last_sync'] = datetime.now().strftime("%Y-%m-%d %H:%M")
+                
+            except Exception as e:
+                error_message = str(e)
+                logger.error(f"Email sync error: {error_message}")
+                # Update sync status with error information
+                sync_status['error'] = error_message
+                sync_status['progress'] = 0
+                sync_status['status'] = 'failed'
+            finally:
+                # Always mark sync as complete in finally block
+                sync_status['is_syncing'] = False
+        
+        # Start sync thread if not already syncing
+        if not sync_status.get('is_syncing', False):
+            logger.info("Starting new sync thread")
+            sync_thread = threading.Thread(target=run_sync)
+            sync_thread.daemon = True
+            sync_thread.start()
+            logger.info("Sync thread started successfully")
+            # Show sync progress page
+            return render_template('sync_in_progress.html',
+                                 name=user_name_copy,
+                                 sync_type='Email Intelligence',
+                                 progress=0)
+        else:
+            logger.warning(f"Sync already in progress for {sync_status.get('user_email', 'unknown user')}")
+            return jsonify({'error': 'Sync already in progress'}), 400
+            
+    @app.route('/api/sync-status')
+    def get_sync_status():
+        global sync_status
+        # If sync is complete, redirect to email insights
+        if not sync_status['is_syncing'] and sync_status['progress'] == 100:
+            # Reset progress to avoid repeated redirects
+            sync_status['progress'] = 0
+            return jsonify({
+                'is_syncing': False,
+                'progress': 100,
+                'user_email': sync_status['user_email'],
+                'sync_type': sync_status['sync_type'],
+                'redirect': '/email-insights'
+            })
+        return jsonify({
+            'is_syncing': sync_status['is_syncing'],
+            'progress': sync_status['progress'],
+            'user_email': sync_status['user_email'],
+            'sync_type': sync_status['sync_type']
+        })
+            
+    @app.route('/api/save-preferences', methods=['POST'])
+    def save_preferences():
+        if 'user_email' not in session:
+            return jsonify({'success': False, 'error': 'Not logged in'}), 401
+            
+        try:
+            data = request.json
+            
+            # Save preferences to session
+            session['email_sync_frequency'] = int(data.get('email_sync_frequency', 24))
+            session['email_days_back'] = int(data.get('email_days_back', 30))
+            session['urgent_alerts_enabled'] = bool(data.get('urgent_alerts_enabled', True))
+            
+            return jsonify({'success': True})
+        except Exception as e:
+            logger.error(f"Error saving preferences: {str(e)}")
+            return jsonify({'success': False, 'error': str(e)}), 500
+            
     @app.route('/disconnect-gmail')
     def disconnect_gmail():
         if 'google_oauth_token' in session:
@@ -505,7 +568,7 @@ def create_app():
             
         # Redirect to settings page
         return redirect(url_for('settings'))
-    
+        
     @app.route('/api/sync-status')
     def api_sync_status():
         global sync_status
@@ -517,9 +580,8 @@ def create_app():
         if sync_status.get('user_email') == session.get('user_email'):
             # If sync is complete, update session with insights
             if not sync_status.get('is_syncing') and sync_status.get('progress') == 100:
-                if 'email_insights' in sync_status:
-                    session['email_insights'] = sync_status['email_insights']
-                    session['last_email_sync'] = sync_status.get('last_sync', datetime.now().strftime("%Y-%m-%d %H:%M"))
+                session['email_insights'] = sync_status.get('email_insights', {})
+                session['last_email_sync'] = sync_status.get('last_sync', datetime.now().strftime("%Y-%m-%d %H:%M"))
                 
             return jsonify({
                 'is_syncing': sync_status.get('is_syncing', False),
@@ -557,173 +619,29 @@ def create_app():
         insights['status'] = 'success'
         
         return jsonify(insights)
-    
-    @app.route('/api/save-preferences', methods=['POST'])
-    def save_preferences():
-        if 'user_email' not in session:
-            return jsonify({'success': False, 'error': 'Not logged in'}), 401
-            
-        try:
-            data = request.json
-            
-            # Save preferences to session
-            session['email_sync_frequency'] = int(data.get('email_sync_frequency', 24))
-            session['email_days_back'] = int(data.get('email_days_back', 30))
-            session['urgent_alerts_enabled'] = bool(data.get('urgent_alerts_enabled', True))
-            
-            return jsonify({'success': True})
-        except Exception as e:
-            logger.error(f"Error saving preferences: {str(e)}")
-            return jsonify({'success': False, 'error': str(e)}), 500
-    
-    @app.route('/api/chat', methods=['POST'])
-    def api_chat():
-        """Handle chat messages and get responses from Claude."""
-        if 'user_email' not in session:
-            return jsonify({'error': 'Not authenticated'}), 401
-        
-        try:
-            data = request.json
-            if not data or 'message' not in data:
-                return jsonify({'error': 'No message provided'}), 400
-            
-            user_message = data['message']
-            logger.info(f"Chat request from {session['user_email']}: {user_message[:50]}...")
-            
-            # Get context from session if available
-            email_insights = session.get('email_insights', {})
-            user_name = session.get('user_name', 'User')
-            user_email = session.get('user_email', 'user@example.com')
-            
-            # Build a more detailed context for Claude
-            context_parts = [f"You are an AI Chief of Staff assistant for {user_name} ({user_email})."]
-            
-            if email_insights and email_insights.get('status') != 'error':
-                context_parts.append("\nBased on recent email analysis, here's what I know:")
-                
-                # Add key relationships
-                if email_insights.get('key_relationships'):
-                    context_parts.append("\n**Key Relationships:**")
-                    for rel in email_insights['key_relationships'][:5]:  # Top 5
-                        if isinstance(rel, dict):
-                            context_parts.append(f"- {rel.get('name', 'Unknown')} ({rel.get('email', '')}): {rel.get('context', '')}")
-                        else:
-                            context_parts.append(f"- {rel}")
-                
-                # Add active projects
-                if email_insights.get('active_projects'):
-                    context_parts.append("\n**Active Projects:**")
-                    for proj in email_insights['active_projects'][:5]:  # Top 5
-                        if isinstance(proj, dict):
-                            context_parts.append(f"- {proj.get('name', 'Unknown')}: {proj.get('description', '')}")
-                        else:
-                            context_parts.append(f"- {proj}")
-                
-                # Add action items
-                if email_insights.get('action_items'):
-                    context_parts.append("\n**Action Items:**")
-                    for action in email_insights['action_items'][:5]:  # Top 5
-                        if isinstance(action, dict):
-                            context_parts.append(f"- {action.get('description', 'Unknown')} (Due: {action.get('deadline', 'No deadline')})")
-                        else:
-                            context_parts.append(f"- {action}")
-                
-                # Add important information
-                if email_insights.get('important_information'):
-                    context_parts.append("\n**Important Information:**")
-                    for info in email_insights['important_information'][:3]:  # Top 3
-                        if isinstance(info, dict):
-                            context_parts.append(f"- {info.get('description', '')}")
-                        else:
-                            context_parts.append(f"- {info}")
-                
-                context_parts.append(f"\nThis information is based on analyzing {user_name}'s emails from the last 30 days.")
+                # Use insights from session if available
+                insights = session['email_insights']
+                logger.info("API: Using email insights from session")
             else:
-                context_parts.append("\nNo email insights are currently available. The user may need to sync their emails first.")
+                # If not available, fetch them
+                logger.info("API: Fetching new email insights")
+                from backend.core.claude_integration.email_intelligence import EmailIntelligence
+                email_intelligence = EmailIntelligence(claude_client)
+                insights = email_intelligence.analyze_recent_emails(user_email, access_token, days_back=30)
+                session['email_insights'] = insights
             
-            context = "\n".join(context_parts)
+            # Add last sync time to the response
+            insights['last_sync'] = last_sync
+            insights['status'] = 'success'
             
-            # Log context for debugging
-            logger.info(f"Context length: {len(context)} characters")
-            logger.info(f"Has insights: {'email_insights' in session and bool(email_insights)}")
-            
-            # Send message to Claude
-            try:
-                response = claude_client.messages.create(
-                    model="claude-3-opus-20240229",
-                    max_tokens=2000,
-                    temperature=0.7,
-                    system=context,
-                    messages=[{"role": "user", "content": user_message}]
-                )
+            return jsonify(insights)
                 
-                # Extract the response text
-                assistant_message = response.content[0].text
-                
-            except AttributeError:
-                # Fallback for older SDK versions
-                logger.info("Using fallback Claude client interface for chat")
-                response = claude_client.completions.create(
-                    model="claude-3-opus-20240229",
-                    max_tokens=2000,
-                    temperature=0.7,
-                    system=context,
-                    prompt=user_message
-                )
-                assistant_message = response.completion
-            
-            logger.info(f"Claude response: {assistant_message[:50]}...")
-            
-            return jsonify({
-                'response': assistant_message,
-                'status': 'success'
-            })
-            
         except Exception as e:
-            logger.error(f"Chat API error: {str(e)}")
-            import traceback
-            logger.error(f"Traceback: {traceback.format_exc()}")
-            return jsonify({
-                'error': f'Failed to process chat: {str(e)}',
-                'status': 'error'
-            }), 500
-    
-    @app.route('/test-insights')
-    def test_insights():
-        """Test page for debugging insights display"""
-        if 'user_email' not in session:
-            return redirect(url_for('login'))
-        return send_file('../test_insights_display.html')
-    
-    @app.route('/api/debug-session')
-    def debug_session():
-        """Debug endpoint to check session data"""
-        if 'user_email' not in session:
-            return jsonify({'error': 'Not authenticated'}), 401
-        
-        # Get insights from session
-        email_insights = session.get('email_insights', {})
-        
-        # Check structure
-        debug_info = {
-            'user_email': session.get('user_email'),
-            'last_sync': session.get('last_email_sync', 'Never'),
-            'has_insights': 'email_insights' in session,
-            'insights_keys': list(email_insights.keys()) if email_insights else [],
-            'insights_summary': {
-                'key_relationships': len(email_insights.get('key_relationships', [])),
-                'active_projects': len(email_insights.get('active_projects', [])),
-                'action_items': len(email_insights.get('action_items', [])),
-                'important_information': len(email_insights.get('important_information', []))
-            } if email_insights else {},
-            'sample_relationship': email_insights.get('key_relationships', [{}])[0] if email_insights.get('key_relationships') else None,
-            'insights_status': email_insights.get('status', 'unknown')
-        }
-        
-        return jsonify(debug_info)
+            logger.error(f"API email insights error: {str(e)}")
+            return jsonify({'error': f'Email insights error: {str(e)}'}), 500
     
     return app
 
 if __name__ == '__main__':
     app = create_app()
-    app.run(host='0.0.0.0', port=8080, debug=True) 
+    app.run(host='0.0.0.0', port=8080, debug=True)

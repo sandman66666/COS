@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Settings | AI Chief of Staff</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f8f9fa;
+            color: #212529;
+        }
+        .settings-container {
+            max-width: 900px;
+            margin: 0 auto;
+            background-color: #fff;
+            border-radius: 10px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            padding: 2rem;
+        }
+        .header {
+            background-color: #4a6fdc;
+            color: white;
+            padding: 1.5rem;
+            border-radius: 10px 10px 0 0;
+            margin: -2rem -2rem 2rem -2rem;
+        }
+        .service-card {
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            transition: all 0.2s ease;
+        }
+        .service-card:hover {
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        .service-icon {
+            font-size: 2rem;
+            margin-bottom: 1rem;
+        }
+        .connected {
+            color: #198754;
+        }
+        .disconnected {
+            color: #dc3545;
+        }
+        .sync-status {
+            font-size: 0.9rem;
+            margin-top: 1rem;
+        }
+        .progress {
+            height: 10px;
+            margin-top: 0.5rem;
+        }
+        h1 {
+            font-weight: 600;
+        }
+        .nav-link {
+            color: #4a6fdc;
+        }
+        .nav-link:hover {
+            color: #3a5bb9;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-light bg-light mb-4">
+        <div class="container">
+            <a class="navbar-brand" href="/">AI Chief of Staff</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/">Home</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/chat">Chat</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/email-insights">Email Insights</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" href="/settings">Settings</a>
+                    </li>
+                </ul>
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/logout">Logout</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mb-5">
+        <div class="settings-container">
+            <div class="header">
+                <h1>Settings</h1>
+                <p class="mb-0">Manage your integrations and preferences</p>
+            </div>
+            
+            <h2 class="mb-4">Connected Services</h2>
+            
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="service-card">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div>
+                                <i class="bi bi-envelope service-icon {{ 'connected' if is_gmail_connected else 'disconnected' }}"></i>
+                                <h3>Gmail</h3>
+                                <p>Connect your Gmail account to enable email intelligence features.</p>
+                                <div class="card-body">
+                                    <h5 class="card-title">Gmail Connection</h5>
+                                    {% if gmail_connected %}
+                                    <div class="badge bg-success mb-3">Connected</div>
+                                    
+                                    <div class="sync-status">
+                                        {% if last_sync %}
+                                            <div class="mb-2">
+                                                <small class="text-muted">Last synced: {{ last_sync }}</small>
+                                            </div>
+                                        {% endif %}
+                                        
+                                        {% if sync_status and sync_status.is_syncing %}
+                                            <div class="d-flex justify-content-between mb-2">
+                                                <span class="text-primary">Syncing in progress...</span>
+                                            </div>
+                                            <div class="progress mb-3">
+                                                <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                                                    role="progressbar" 
+                                                    aria-valuenow="{{ sync_status.progress if sync_status else 0 }}" 
+                                                    aria-valuemin="0" 
+                                                    aria-valuemax="100" 
+                                                    style="width: {{ sync_status.progress if sync_status else 0 }}%;"></div>
+                                            </div>
+                                        {% endif %}
+                                        
+                                        <div class="mt-3">
+                                            <form action="/sync-emails" method="post" style="display:inline;">
+                                                <button type="submit" class="btn btn-outline-primary btn-sm">Sync Now</button>
+                                            </form>
+                                            <a href="/disconnect-gmail" class="btn btn-outline-danger btn-sm">Disconnect</a>
+                                        </div>
+                                    </div>
+                                {% else %}
+                                    <div class="badge bg-secondary mb-3">Not Connected</div>
+                                    <a href="/login" class="btn btn-primary">Connect Gmail</a>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="col-md-6">
+                    <div class="service-card">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div>
+                                <i class="bi bi-calendar3 service-icon disconnected"></i>
+                                <h3>Google Calendar</h3>
+                                <p>Connect your Google Calendar for scheduling and event management.</p>
+                                <div class="badge bg-secondary mb-3">Coming Soon</div>
+                                <button class="btn btn-outline-secondary" disabled>Connect Calendar</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="row mt-3">
+                <div class="col-md-6">
+                    <div class="service-card">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div>
+                                <i class="bi bi-kanban service-icon disconnected"></i>
+                                <h3>ClickUp</h3>
+                                <p>Connect ClickUp for task and project management integration.</p>
+                                <div class="badge bg-secondary mb-3">Coming Soon</div>
+                                <button class="btn btn-outline-secondary" disabled>Connect ClickUp</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="col-md-6">
+                    <div class="service-card">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div>
+                                <i class="bi bi-slack service-icon disconnected"></i>
+                                <h3>Slack</h3>
+                                <p>Connect Slack for communication and notification integration.</p>
+                                <div class="badge bg-secondary mb-3">Coming Soon</div>
+                                <button class="btn btn-outline-secondary" disabled>Connect Slack</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <h2 class="mb-4 mt-5">Preferences</h2>
+            
+            <div class="mb-3">
+                <label for="syncFrequency" class="form-label">Email Sync Frequency</label>
+                <select class="form-select" id="syncFrequency">
+                    <option value="1" {{ 'selected' if email_sync_frequency == 1 else '' }}>Every hour</option>
+                    <option value="3" {{ 'selected' if email_sync_frequency == 3 else '' }}>Every 3 hours</option>
+                    <option value="6" {{ 'selected' if email_sync_frequency == 6 else '' }}>Every 6 hours</option>
+                    <option value="12" {{ 'selected' if email_sync_frequency == 12 else '' }}>Every 12 hours</option>
+                    <option value="24" {{ 'selected' if email_sync_frequency == 24 else '' }}>Once a day</option>
+                </select>
+            </div>
+            
+            <div class="mb-3">
+                <label for="emailDaysBack" class="form-label">Email Analysis Lookback Period</label>
+                <select class="form-select" id="emailDaysBack">
+                    <option value="7" {{ 'selected' if email_days_back == 7 else '' }}>7 days</option>
+                    <option value="14" {{ 'selected' if email_days_back == 14 else '' }}>14 days</option>
+                    <option value="30" {{ 'selected' if email_days_back == 30 else '' }}>30 days</option>
+                    <option value="60" {{ 'selected' if email_days_back == 60 else '' }}>60 days</option>
+                    <option value="90" {{ 'selected' if email_days_back == 90 else '' }}>90 days</option>
+                </select>
+            </div>
+            
+            <div class="form-check mb-3">
+                <input class="form-check-input" type="checkbox" id="urgentAlerts" {{ 'checked' if urgent_alerts_enabled else '' }}>
+                <label class="form-check-label" for="urgentAlerts">
+                    Enable urgent email alerts
+                </label>
+            </div>
+            
+            <button id="savePreferences" class="btn btn-primary">Save Preferences</button>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.getElementById('savePreferences').addEventListener('click', function() {
+            // Get form values
+            const syncFrequency = document.getElementById('syncFrequency').value;
+            const emailDaysBack = document.getElementById('emailDaysBack').value;
+            const urgentAlertsEnabled = document.getElementById('urgentAlerts').checked;
+            
+            // Send to backend
+            fetch('/api/save-preferences', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    email_sync_frequency: syncFrequency,
+                    email_days_back: emailDaysBack,
+                    urgent_alerts_enabled: urgentAlertsEnabled
+                }),
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert('Preferences saved successfully!');
+                } else {
+                    alert('Error saving preferences: ' + data.error);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('An error occurred while saving preferences.');
+            });
+        });
+        
+        // Check sync status periodically if syncing is in progress
+        /* Jinja2 template conditional start */
+        /* {% if is_email_syncing %} */
+        var isEmailSyncing = {{ is_email_syncing|tojson }};
+        if (isEmailSyncing) {
+            (function() {
+                function checkSyncStatus() {
+                    fetch('/api/sync-status')
+                    .then(function(response) { return response.json(); })
+                    .then(function(data) {
+                        if (data.is_syncing) {
+                            document.querySelector('.progress-bar').style.width = data.progress + '%';
+                            setTimeout(checkSyncStatus, 2000);
+                        } else {
+                            window.location.reload();
+                        }
+                    });
+                }
+                
+                // Start checking sync status
+                setTimeout(checkSyncStatus, 2000);
+            })();
+        }
+        /* {% endif %} */
+        /* Jinja2 template conditional end */
+    </script>
+</body>
+</html>

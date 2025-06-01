@@ -1,0 +1,294 @@
+AI Chief of staff - architecture milestone 1
+
+
+
+
+personal-ai-assistant/
+├── README.md # Project overview, Heroku deployment instructions
+├── Procfile # Heroku process configuration
+├── runtime.txt # Python version specification for Heroku
+├── requirements.txt # Python dependencies
+├── package.json # Node.js dependencies for frontend build
+├── .env.example # Environment variables template
+├── .gitignore # Git ignore patterns
+├── app.json # Heroku app configuration for review apps
+├── release-tasks.sh # Heroku release phase tasks (migrations, etc.)
+│
+├── backend/
+│ ├── __init__.py
+│ ├── main.py # FastAPI application entry point
+│ ├── config/
+│ │ ├── __init__.py
+│ │ ├── settings.py # Heroku-optimized configuration
+│ │ ├── database.py # PostgreSQL connection (Heroku Postgres)
+│ │ └── redis_config.py # Redis connection (Heroku Redis)
+│ │
+│ ├── core/
+│ │ ├── __init__.py
+│ │ ├── prompt_intelligence/
+│ │ │ ├── __init__.py
+│ │ │ ├── intent_classifier.py # Lightweight NLP for prompt classification
+│ │ │ ├── entity_extractor.py # Extract business entities from prompts
+│ │ │ ├── context_mapper.py # Map prompts to Claude's available integrations
+│ │ │ └── prompt_optimizer.py # Optimize prompts for Claude's capabilities
+│ │ │
+│ │ ├── claude_integration/
+│ │ │ ├── __init__.py
+│ │ │ ├── claude_client.py # Main Claude API client with all integrations
+│ │ │ ├── workspace_handler.py # Leverage Claude's Google Workspace access
+│ │ │ ├── email_intelligence.py # Email analysis via Claude's Gmail integration
+│ │ │ ├── calendar_intelligence.py # Calendar analysis via Claude's integration
+│ │ │ ├── prompt_builder.py # Build context-rich prompts for Claude
+│ │ │ └── response_processor.py # Process and structure Claude's responses
+│ │ │
+│ │ ├── trigger_engine/
+│ │ │ ├── __init__.py
+│ │ │ ├── trigger_manager.py # Manage user-created triggers
+│ │ │ ├── heroku_scheduler.py # Heroku Scheduler integration for triggers
+│ │ │ ├── executor.py # Execute triggers via Claude
+│ │ │ └── notification_service.py # Multi-channel notification delivery
+│ │ │
+│ │ └── data_orchestrator/
+│ │ ├── __init__.py
+│ │ ├── smart_fetcher.py # Orchestrate data requests to Claude
+│ │ ├── context_builder.py # Build comprehensive context for Claude
+│ │ ├── cache_manager.py # Redis-based intelligent caching
+│ │ └── data_synthesizer.py # Combine Claude responses with external data
+│ │
+│ ├── integrations/
+│ │ ├── __init__.py
+│ │ ├── base_connector.py # Abstract base for non-Claude integrations
+│ │ ├── clickup/
+│ │ │ ├── __init__.py
+│ │ │ ├── clickup_connector.py # ClickUp API integration
+│ │ │ ├── task_analyzer.py # Task prioritization logic
+│ │ │ └── data_formatter.py # Format ClickUp data for Claude context
+│ │ │
+│ │ ├── external_apis/
+│ │ │ ├── __init__.py
+│ │ │ ├── webhook_handler.py # Handle webhooks from external services
+│ │ │ └── api_client.py # Generic external API client
+│ │ │
+│ │ └── claude_native/
+│ │ ├── __init__.py
+│ │ ├── 
+│ │ ├── calendar_proxy.py # Proxy to Claude's Calendar integration
+│ │ ├── drive_proxy.py # Proxy to Claude's Drive integration (if available)
+│ │ └── integration_registry.py # Registry of all Claude's native integrations
+│ │
+│ ├── api/
+│ │ ├── __init__.py
+│ │ ├── routes/
+│ │ │ ├── __init__.py
+│ │ │ ├── triggers.py # Trigger CRUD operations
+│ │ │ ├── insights.py # Retrieve insights and chat with Claude
+│ │ │ ├── integrations.py # Manage external integrations
+│ │ │ ├── auth.py # User authentication
+│ │ │ ├── chat.py # Direct chat interface with Claude
+│ │ │ └── health.py # Health checks for Heroku
+│ │ │
+│ │ ├── middleware/
+│ │ │ ├── __init__.py
+│ │ │ ├── auth_middleware.py # JWT token validation
+│ │ │ ├── rate_limiter.py # API rate limiting
+│ │ │ └── cors_middleware.py # CORS for frontend
+│ │ │
+│ │ └── dependencies.py # FastAPI dependencies
+│ │
+│ ├── models/
+│ │ ├── __init__.py
+│ │ ├── database/
+│ │ │ ├── __init__.py
+│ │ │ ├── user.py # User model
+│ │ │ ├── trigger.py # Trigger configurations
+│ │ │ ├── insight.py # Generated insights cache
+│ │ │ ├── conversation.py # Chat history with Claude
+│ │ │ ├── integration_config.py # External integration settings
+│ │ │ └── base.py # SQLAlchemy base
+│ │ │
+│ │ ├── schemas/
+│ │ │ ├── __init__.py
+│ │ │ ├── trigger_schemas.py # Trigger API schemas
+│ │ │ ├── insight_schemas.py # Insight response schemas
+│ │ │ ├── chat_schemas.py # Chat interface schemas
+│ │ │ └── user_schemas.py # User management schemas
+│ │ │
+│ │ └── enums.py # Application enums
+│ │
+│ ├── services/
+│ │ ├── __init__.py
+│ │ ├── user_service.py # User management logic
+│ │ ├── trigger_service.py # Trigger business logic
+│ │ ├── insight_service.py # Insight generation via Claude
+│ │ ├── chat_service.py # Chat interface with Claude
+│ │ ├── integration_service.py # External integration management
+│ │ └── notification_service.py # Notification delivery
+│ │
+│ ├── utils/
+│ │ ├── __init__.py
+│ │ ├── logger.py # Heroku-optimized logging
+│ │ ├── encryption.py # Data encryption utilities
+│ │ ├── date_utils.py # Date/time utilities
+│ │ ├── text_processing.py # Text processing helpers
+│ │ ├── heroku_utils.py # Heroku-specific utilities
+│ │ └── validators.py # Input validation
+│ │
+│ ├── tasks/
+│ │ ├── __init__.py
+│ │ ├── trigger_tasks.py # Background tasks for triggers
+│ │ ├── data_sync_tasks.py # Periodic data synchronization
+│ │ └── maintenance_tasks.py # Database cleanup and maintenance
+│ │
+│ └── tests/
+│ ├── __init__.py
+│ ├── conftest.py # Pytest configuration
+│ ├── unit/
+│ │ ├── test_claude_integration.py # Claude integration tests
+│ │ ├── test_prompt_intelligence.py # Prompt analysis tests
+│ │ ├── test_trigger_engine.py # Trigger system tests
+│ │ └── test_services.py # Business logic tests
+│ │
+│ ├── integration/
+│ │ ├── test_api_endpoints.py # API integration tests
+│ │ ├── test_claude_responses.py # Claude response validation
+│ │ └── test_external_apis.py # External API tests
+│ │
+│ └── fixtures/
+│ ├── sample_prompts.json # Test prompts
+│ ├── mock_claude_responses.json # Mock Claude responses
+│ └── test_data.json # Test data fixtures
+│
+├── frontend/
+│ ├── public/
+│ │ ├── index.html # Main HTML template
+│ │ ├── favicon.ico # App favicon
+│ │ └── manifest.json # PWA configuration
+│ │
+│ ├── src/
+│ │ ├── index.js # React entry point
+│ │ ├── App.js # Main React component
+│ │ ├── index.css # Global styles
+│ │ │
+│ │ ├── components/
+│ │ │ ├── common/
+│ │ │ │ ├── Header.js # App header
+│ │ │ │ ├── Sidebar.js # Navigation
+│ │ │ │ ├── LoadingSpinner.js # Loading states
+│ │ │ │ └── ErrorBoundary.js # Error handling
+│ │ │ │
+│ │ │ ├── chat/
+│ │ │ │ ├── ChatInterface.js # Direct chat with Claude
+│ │ │ │ ├── MessageBubble.js # Chat message display
+│ │ │ │ ├── PromptSuggestions.js # Suggested prompts
+│ │ │ │ └── ChatHistory.js # Conversation history
+│ │ │ │
+│ │ │ ├── triggers/
+│ │ │ │ ├── TriggerList.js # User trigger management
+│ │ │ │ ├── TriggerForm.js # Create/edit triggers
+│ │ │ │ ├── TriggerCard.js # Individual trigger display
+│ │ │ │ └── TemplateLibrary.js # Pre-built templates
+│ │ │ │
+│ │ │ ├── insights/
+│ │ │ │ ├── InsightDashboard.js # Main insights view
+│ │ │ │ ├── InsightCard.js # Individual insight
+│ │ │ │ ├── InsightHistory.js # Historical insights
+│ │ │ │ └── ActionButtons.js # Quick actions
+│ │ │ │
+│ │ │ └── integrations/
+│ │ │ ├── IntegrationStatus.js # Show Claude + external integrations
+│ │ │ ├── ExternalSetup.js # Setup non-Claude integrations
+│ │ │ └── ConnectionHealth.js # Integration health monitoring
+│ │ │
+│ │ ├── pages/
+│ │ │ ├── Dashboard.js # Main dashboard
+│ │ │ ├── Chat.js # Chat interface page
+│ │ │ ├── Triggers.js # Trigger management
+│ │ │ ├── Insights.js # Insights history
+│ │ │ ├── Integrations.js # Integration management
+│ │ │ └── Settings.js # User settings
+│ │ │
+│ │ ├── hooks/
+│ │ │ ├── useAuth.js # Authentication
+│ │ │ ├── useClaude.js # Claude chat interface
+│ │ │ ├── useTriggers.js # Trigger management
+│ │ │ ├── useInsights.js # Insights data
+│ │ │ └── useWebSocket.js # Real-time updates
+│ │ │
+│ │ ├── services/
+│ │ │ ├── api.js # Axios API client
+│ │ │ ├── auth.js # Authentication service
+│ │ │ ├── claude.js # Claude chat API
+│ │ │ ├── triggers.js # Trigger API calls
+│ │ │ └── websocket.js # WebSocket for real-time
+│ │ │
+│ │ └── utils/
+│ │ ├── constants.js # App constants
+│ │ ├── formatters.js # Data formatting
+│ │ └── storage.js # Local storage
+│ │
+│ ├── package.json # Frontend dependencies
+│ └── webpack.config.js # Build configuration
+│
+├── mobile/
+│ ├── App.js # React Native main component
+│ ├── package.json # Mobile dependencies
+│ │
+│ ├── src/
+│ │ ├── navigation/
+│ │ │ ├── AppNavigator.js # Main navigation
+│ │ │ └── AuthNavigator.js # Auth flow
+│ │ │
+│ │ ├── screens/
+│ │ │ ├── DashboardScreen.js # Mobile dashboard
+│ │ │ ├── ChatScreen.js # Mobile chat with Claude
+│ │ │ ├── InsightsScreen.js # Mobile insights
+│ │ │ ├── TriggersScreen.js # Mobile trigger management
+│ │ │ └── NotificationsScreen.js # Push notifications
+│ │ │
+│ │ ├── components/
+│ │ │ ├── ChatBubble.js # Mobile chat interface
+│ │ │ ├── InsightCard.js # Mobile insight display
+│ │ │ ├── VoiceInput.js # Voice prompts to Claude
+│ │ │ └── QuickActions.js # Fast actions from insights
+│ │ │
+│ │ └── services/
+│ │ ├── api.js # Mobile API client
+│ │ ├── notifications.js # Push notifications
+│ │ └── voiceRecording.js # Voice input processing
+│ │
+│ ├── android/ # Android config
+│ └── ios/ # iOS config
+│
+├── heroku/
+│ ├── app.json # Heroku app configuration
+│ ├── scheduler_tasks.py # Heroku Scheduler task definitions
+│ ├── release_tasks.py # Heroku release phase tasks
+│ └── addons.json # Required Heroku add-ons list
+│
+├── scripts/
+│ ├── setup_heroku.sh # Heroku deployment setup
+│ ├── deploy_heroku.sh # Deployment script
+│ ├── setup_addons.sh # Install required Heroku add-ons
+│ ├── migrate_db.py # Database migrations
+│ └── seed_data.py # Sample data for development
+│
+├── docs/
+│ ├── deployment/
+│ │ ├── heroku_setup.md # Heroku deployment guide
+│ │ ├── environment_variables.md # Required env vars
+│ │ └── scaling.md # Scaling on Heroku
+│ │
+│ ├── architecture/
+│ │ ├── claude_integration.md # How we leverage Claude's integrations
+│ │ ├── data_flow.md # Data flow with Claude
+│ │ └── trigger_system.md # Trigger architecture
+│ │
+│ └── user_guides/
+│ ├── getting_started.md # Quick start guide
+│ ├── creating_triggers.md # Trigger creation guide
+│ └── claude_chat.md # Using the Claude chat interface
+│
+└── monitoring/
+├── heroku_logs.py # Heroku log analysis
+├── health_checks.py # Application health monitoring
+└── metrics_collector.py # Custom metrics for Heroku

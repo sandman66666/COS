@@ -66,6 +66,9 @@
             text-decoration: none;
             font-weight: 500;
             transition: all 0.3s ease;
+            cursor: pointer;
+            border: none;
+            font-size: 16px;
         }
         .btn-primary {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -150,9 +153,9 @@
                 </div>
             </div>
             <div class="nav">
-                <a href="/chat" class="btn btn-primary">Start Chatting</a>
-                <a href="/settings" class="btn btn-secondary">Settings</a>
-                <a href="/logout" class="btn btn-secondary">Logout</a>
+                <button onclick="window.location.href='/chat'" class="btn btn-primary">Start Chatting</button>
+                <button onclick="window.location.href='/settings'" class="btn btn-secondary">Settings</button>
+                <button onclick="window.location.href='/logout'" class="btn btn-secondary">Logout</button>
             </div>
         </div>
 
@@ -167,7 +170,7 @@
                     <p>Have natural conversations with Claude about your work, get insights, and ask questions about your data.</p>
                 </div>
 
-                <div class="feature-card">
+                <div class="feature-card" onclick="window.location.href='/email-insights'" style="cursor: pointer;">
                     <span class="feature-icon">📧</span>
                     <h3>Gmail Integration <span class="status-badge status-ready">Ready</span></h3>
                     <p>Claude has native access to your Gmail and can help analyze emails, draft responses, and manage your inbox.</p>
@@ -191,10 +194,10 @@
                     <p>Save prompts to run automatically and get proactive insights delivered to your desktop.</p>
                 </div>
 
-                <div class="feature-card">
+                <div class="feature-card" onclick="window.location.href='/email-insights'" style="cursor: pointer;">
                     <span class="feature-icon">🧠</span>
-                    <h3>Business Intelligence <span class="status-badge status-coming">Coming Soon</span></h3>
-                    <p>Get strategic insights about your work, priorities, and opportunities across all your tools.</p>
+                    <h3>Email Intelligence <span class="status-badge status-ready">Ready</span></h3>
+                    <p>Get strategic insights about your email communications, key relationships, and action items.</p>
                 </div>
             </div>
         </div>
