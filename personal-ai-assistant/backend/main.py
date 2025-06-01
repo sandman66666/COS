@@ -16,16 +16,16 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 
 load_dotenv()  # Load environment variables from .env file
 
+# Configure logging
+import logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
 from flask import Flask, session, render_template, redirect, url_for, request, jsonify, send_file
 from flask_session import Session
 from werkzeug.middleware.proxy_fix import ProxyFix
 import tempfile
-import logging
 import threading
-
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 # Global variables for tracking sync status
 sync_status = {
@@ -184,10 +184,18 @@ def create_app():
         if sync_status['is_syncing'] and sync_status['user_email'] == user_email:
             current_sync_status = sync_status
         
-        # Initialize intelligence service for this request
+        # Initialize services for this request
         from services.intelligence_service import IntelligenceService
+        from services.structured_knowledge_service import StructuredKnowledgeService
+        from services.knowledge_integration_service import KnowledgeIntegrationService
+        from services.entity_extraction_service import EntityExtractionService
         from models.database.insights_storage import UserIntelligence, EmailSyncStatus
+        from models.database.structured_knowledge import Project, Goal, KnowledgeFile
+        from models.database.tasks import Task
+        
         intelligence_service = IntelligenceService(database_url, claude_client)
+        structured_knowledge_service = StructuredKnowledgeService(database_url)
+        knowledge_integration_service = KnowledgeIntegrationService(intelligence_service.SessionLocal, claude_client)
         
         # Get user preferences
         session_db = intelligence_service.SessionLocal()
@@ -758,33 +766,41 @@ def create_app():
             if not success:
                 return jsonify({'error': 'File not found', 'success': False}), 404
             return jsonify({'success': True})
-    
-    @app.route('/api/knowledge-files/<file_id>/view', methods=['GET'])
-    def api_view_knowledge_file(file_id):
-        if 'user_email' not in session:
-            return jsonify({'error': 'Not authenticated'}), 401
+
+    # Register new blueprints
+    try:
+        # Import the routes modules
+        from routes import tasks, knowledge_graph, email_knowledge
         
-        user_email = session.get('user_email')
-        
-        # Initialize intelligence service for this request
-        from services.intelligence_service import IntelligenceService
-        intelligence_service = IntelligenceService(database_url, claude_client)
-        
-        # Get file data from database
-        session_db = intelligence_service.SessionLocal()
+        # Register the blueprints
+        # Note: Each blueprint might have a different variable name
+        # Check the actual variable names in each module
         try:
-            file = session_db.query(KnowledgeFile).filter_by(user_email=user_email, id=file_id).first()
-            if not file or not os.path.exists(file.file_path):
-                return jsonify({'error': 'File not found'}), 404
+            app.register_blueprint(tasks.tasks_bp)
+            logging.info("Registered tasks blueprint")
+        except AttributeError:
+            logging.warning("Could not find tasks.tasks_bp blueprint")
             
-            return send_file(file.file_path, 
-                           download_name=file.original_filename,
-                           as_attachment=False)
-        finally:
-            session_db.close()
+        try:
+            app.register_blueprint(knowledge_graph.kg_bp)
+            logging.info("Registered knowledge_graph blueprint")
+        except AttributeError:
+            logging.warning("Could not find knowledge_graph.kg_bp blueprint")
+            
+        try:
+            app.register_blueprint(email_knowledge.email_knowledge_bp)
+            logging.info("Registered email_knowledge blueprint")
+        except AttributeError:
+            logging.warning("Could not find email_knowledge.email_knowledge_bp blueprint")
+        
+        logging.info("Finished blueprint registration")
+    except ImportError as e:
+        logging.error(f"Error importing route modules: {str(e)}")
+    except Exception as e:
+        logging.error(f"Error registering blueprints: {str(e)}")
     
     return app
 
 if __name__ == '__main__':
     app = create_app()
-    app.run(host='0.0.0.0', port=8080, debug=True)
+    app.run(debug=True, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))

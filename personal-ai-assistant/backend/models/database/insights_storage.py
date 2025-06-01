@@ -32,6 +32,7 @@ class UserIntelligence(Base):
     projects = relationship("Project", back_populates="user_intelligence", cascade="all, delete-orphan", lazy="dynamic")
     goals = relationship("Goal", back_populates="user_intelligence", cascade="all, delete-orphan", lazy="dynamic")
     knowledge_files = relationship("KnowledgeFile", back_populates="user_intelligence", cascade="all, delete-orphan", lazy="dynamic")
+    tasks = relationship("Task", back_populates="user_intelligence", cascade="all, delete-orphan", lazy="dynamic")
     
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
