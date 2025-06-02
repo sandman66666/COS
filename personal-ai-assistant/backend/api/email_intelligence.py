@@ -4,7 +4,7 @@ API routes for email intelligence.
 
 import logging
 from typing import Dict, List, Any, Optional
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Request
 from sqlalchemy.orm import Session
 
 from backend.models.database.database import get_db
@@ -31,6 +31,7 @@ def get_email_intelligence_service(
 
 @router.post("/business-intelligence-sync")
 async def run_business_intelligence_sync(
+    request: Request,
     background_tasks: BackgroundTasks,
     days_back: int = 30,
     service: EmailIntelligenceService = Depends(get_email_intelligence_service),
@@ -42,10 +43,17 @@ async def run_business_intelligence_sync(
     """
     user_email = current_user["email"]
     
+    # Get Google OAuth token from session
+    if "google_oauth_token" not in request.session:
+        raise HTTPException(status_code=400, detail="Gmail not connected. Please connect Gmail first.")
+    
+    token_data = request.session["google_oauth_token"]
+    
     # Run in background task
     background_tasks.add_task(
         service.run_business_intelligence_sync,
         user_email=user_email,
+        token_data=token_data,
         days_back=days_back
     )
     

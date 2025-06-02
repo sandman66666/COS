@@ -4,15 +4,26 @@ import time
 import pathlib
 import secrets
 import requests
+import traceback
+import os
 from datetime import datetime, timedelta
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from dotenv import load_dotenv
 from werkzeug.utils import secure_filename
 # Import SQLAlchemy components
 from sqlalchemy.orm import sessionmaker
 
+# Import Google OAuth libraries
+import google.oauth2.credentials
+import google_auth_oauthlib.flow
+import googleapiclient.discovery
+import google.auth.transport.requests
+
 # Add the project root directory to Python's import path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))  
+
+# Import Gmail connector for real email data
+from backend.integrations.gmail.gmail_connector_improved import ImprovedGmailConnector
 
 load_dotenv()  # Load environment variables from .env file
 
@@ -22,7 +33,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(level
 logger = logging.getLogger(__name__)
 
 from flask import Flask, session, render_template, redirect, url_for, request, jsonify, send_file
-from flask_session import Session
+from flask_session import Session as FlaskSession
 from werkzeug.middleware.proxy_fix import ProxyFix
 import tempfile
 import threading
@@ -36,15 +47,24 @@ sync_status = {
     'last_sync': None
 }
 
-# Initialize Claude client
+# Initialize Claude client with Claude 4 Sonnet model
 from anthropic import Anthropic
 claude_client = Anthropic(api_key=os.environ.get('ANTHROPIC_API_KEY'))
+CLAUDE_MODEL = "claude-sonnet-4-20250514"
 
 # Initialize database URL
 # Define a global database URL with an absolute path
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATABASE_PATH = os.path.join(BASE_DIR, 'chief_of_staff.db')
 database_url = os.environ.get('DATABASE_URL', f'sqlite:///{DATABASE_PATH}')
+
+# Create engine and session factory
+engine = create_engine(database_url)
+Session = sessionmaker(bind=engine)
+
+def get_db():
+    """Get a database session"""
+    return Session()
 
 def create_app():
     app = Flask(__name__, template_folder='../templates', static_folder='../static')
@@ -61,7 +81,7 @@ def create_app():
     
     app.config['SESSION_PERMANENT'] = True
     app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=7)
-    Session(app)
+    FlaskSession(app)
     
     # Google OAuth configuration
     GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID')
@@ -73,6 +93,50 @@ def create_app():
     @app.route('/')
     def index():
         return render_template('index.html', name=session.get('user_name', 'User'))
+        
+    @app.route('/chat')
+    def chat_page():
+        if 'user_email' not in session:
+            return redirect(url_for('login'))
+        return render_template('chat.html')
+        
+    @app.route('/tasks')
+    def tasks_page():
+        if 'user_email' not in session:
+            return redirect(url_for('login'))
+        return render_template('tasks.html')
+        
+    @app.route('/knowledge')
+    def knowledge_page():
+        if 'user_email' not in session:
+            return redirect(url_for('login'))
+        return render_template('knowledge.html')
+        
+    @app.route('/email-knowledge')
+    def email_knowledge_page():
+        """Render the email knowledge page"""
+        if 'user_email' not in session:
+            return redirect(url_for('login'))
+            
+        return render_template('email_knowledge.html')
+        
+    @app.route('/insights')
+    def insights_page():
+        if 'user_email' not in session:
+            return redirect(url_for('login'))
+        return render_template('insights.html')
+        
+    @app.route('/people')
+    def people_page():
+        if 'user_email' not in session:
+            return redirect(url_for('login'))
+        return render_template('people.html')
+        
+    @app.route('/integrations')
+    def integrations_page():
+        if 'user_email' not in session:
+            return redirect(url_for('login'))
+        return render_template('integrations.html')
     
     @app.route('/login')
     def login():
@@ -142,12 +206,15 @@ def create_app():
                 logger.error(f"Token exchange error: {token_data['error']}")
                 return redirect(url_for('index'))
             
-            # Store token in session
+            # Store token in session with all required fields for ImprovedGmailConnector
             session['google_oauth_token'] = {
                 'access_token': token_data['access_token'],
                 'refresh_token': token_data.get('refresh_token'),
                 'token_type': token_data['token_type'],
-                'expires_at': int(time.time()) + token_data['expires_in']
+                'expires_at': int(time.time()) + token_data['expires_in'],
+                'client_id': GOOGLE_CLIENT_ID,
+                'client_secret': GOOGLE_CLIENT_SECRET,
+                'token_uri': GOOGLE_TOKEN_URI
             }
             
             # Get user info
@@ -227,50 +294,36 @@ def create_app():
     
     @app.route('/email-insights')
     def email_insights():
+        # Redirect to the new insights route
+        return redirect(url_for('insights'))
+        
+    @app.route('/insights')
+    def insights():
         if 'user_email' not in session:
             return redirect(url_for('login'))
         
         user_email = session['user_email']
         
-        # Initialize intelligence service using the global database_url
-        # Initialize intelligence service for this request
-        from services.intelligence_service import IntelligenceService
-        from models.database.insights_storage import UserIntelligence
-        intelligence_service = IntelligenceService(database_url, claude_client)
-        
-        # Check if a sync is in progress for this user
+        # Get sync status
         global sync_status
-        if sync_status.get('user_email') == user_email and sync_status.get('is_syncing', False):
+        current_sync_status = None
+        if sync_status.get('is_syncing') and sync_status.get('user_email') == user_email:
+            current_sync_status = sync_status
             # Redirect to sync progress page if sync is in progress
             return render_template('sync_in_progress.html',
-                                name=session.get('user_name', 'User'),
-                                sync_type='Email Intelligence',
-                                progress=sync_status.get('progress', 0))
+                                  active_tab='insights',
+                                  name=session.get('user_name', 'User'),
+                                  user_email=user_email,
+                                  sync_status=current_sync_status)
         
-        # Get insights from database
-        insights = intelligence_service.get_user_insights(user_email)
-        
-        if insights.get('status') == 'no_data':
-            return render_template('email_insights.html',
-                                name=session.get('user_name', 'User'),
-                                insights="<div class='alert alert-info'>No email insights available yet. Please <a href='/sync-emails'>sync your emails</a> first.</div>")
-        
-        # Debug logging
-        logger.info(f"Insights keys: {list(insights.keys())}")
-        logger.info(f"Key relationships count: {len(insights.get('key_relationships', []))}")
-        
-        # Set the last sync time in the session for display
-        if 'generated_at' in insights:
-            session['last_email_sync'] = insights['generated_at']
-        
-
-        
-
-        
-
-        
-
-        
+        # If no sync is in progress, show the insights page
+        return render_template('insights.html', 
+                              active_tab='insights', 
+                              name=session.get('user_name', 'User'),
+                              user_email=user_email,
+                              has_insights='email_insights' in session,
+                              insights=session.get('email_insights', {}),
+                              last_sync=session.get('last_email_sync', 'Never'))
 
         
 
@@ -372,12 +425,13 @@ def create_app():
         # Redirect to settings page
         return redirect(url_for('settings'))
     
-    @app.route('/api/sync-status')
+    @app.route('/api/sync-status', methods=['GET'])
     def api_sync_status():
+        """Get the status of the current sync operation"""
         global sync_status
         
         if 'user_email' not in session:
-            return jsonify({'error': 'Not authenticated'}), 401
+            return jsonify({'success': False, 'error': 'Not authenticated'}), 401
             
         # Only return sync status for the current user
         if sync_status.get('user_email') == session.get('user_email'):
@@ -388,9 +442,11 @@ def create_app():
                     session['last_email_sync'] = sync_status.get('last_sync', datetime.now().strftime("%Y-%m-%d %H:%M"))
                 
             return jsonify({
+                'success': True,
                 'is_syncing': sync_status.get('is_syncing', False),
                 'progress': sync_status.get('progress', 0),
                 'sync_type': sync_status.get('sync_type', ''),
+                'last_sync': sync_status.get('last_sync', ''),
                 'redirect': '/email-insights' if not sync_status.get('is_syncing') and sync_status.get('progress') == 100 else None
             })
         else:
@@ -398,9 +454,11 @@ def create_app():
             # Instead of redirecting to settings, redirect to email-insights
             # This prevents the redirect loop when returning from settings page
             return jsonify({
+                'success': True,
                 'is_syncing': False,
                 'progress': 0,
                 'sync_type': '',
+                'last_sync': '',
                 'redirect': '/email-insights'
             })
     
@@ -421,6 +479,645 @@ def create_app():
         except Exception as e:
             logger.error(f"Error saving preferences: {str(e)}")
             return jsonify({'success': False, 'error': str(e)}), 500
+    
+    @app.route('/api/reset-database', methods=['POST'])
+    def reset_database():
+        if 'user_email' not in session:
+            return jsonify({'success': False, 'error': 'Not authenticated'}), 401
+        
+        try:
+            # Import models here to avoid circular imports
+            from models.database.insights_storage import UserIntelligence, EmailSyncStatus, ContactIntelligence
+            from models.database.structured_knowledge import Task, Project, Goal, KnowledgeFile
+            
+            db = get_db()
+            user_email = session['user_email']
+            
+            logger.info(f"Starting database reset for user {user_email}")
+            
+            # Get user intelligence record to find related records
+            user_intel = db.query(UserIntelligence).filter_by(user_email=user_email).first()
+            
+            if user_intel:
+                # Delete related records first (foreign key constraints)
+                logger.info("Deleting tasks...")
+                db.query(Task).filter_by(user_email=user_email).delete()
+                
+                logger.info("Deleting projects, goals, and knowledge files...")
+                if user_intel.id:
+                    db.query(Project).filter_by(user_intelligence_id=user_intel.id).delete()
+                    db.query(Goal).filter_by(user_intelligence_id=user_intel.id).delete()
+                    db.query(KnowledgeFile).filter_by(user_intelligence_id=user_intel.id).delete()
+                
+                logger.info("Deleting contact intelligence...")
+                db.query(ContactIntelligence).filter_by(user_email=user_email).delete()
+                
+                logger.info("Deleting email sync status...")
+                db.query(EmailSyncStatus).filter_by(user_email=user_email).delete()
+                
+                logger.info("Deleting user intelligence...")
+                db.delete(user_intel)
+            else:
+                logger.info(f"No user intelligence record found for {user_email}")
+            
+            # Reset the global sync status if it belongs to this user
+            global sync_status
+            if sync_status.get('user_email') == user_email:
+                sync_status = {
+                    'is_syncing': False,
+                    'progress': 0,
+                    'user_email': None,
+                    'sync_type': None,
+                    'last_sync': None
+                }
+            
+            db.commit()
+            logger.info(f"Database reset completed for user {user_email}")
+            
+            return jsonify({'success': True, 'message': 'Database reset successful. Please refresh your Gmail data.'})
+        except Exception as e:
+            logger.error(f"Error resetting database: {str(e)}")
+            logger.error(f"Stack trace: {traceback.format_exc()}")
+            db.rollback()
+            return jsonify({'success': False, 'error': str(e)}), 500
+    
+    @app.route('/auth/gmail')
+    def auth_gmail():
+        """Start the Gmail OAuth flow"""
+        # Generate a random state token to prevent CSRF
+        state = secrets.token_hex(16)
+        session['oauth_state'] = state
+        
+        # Configure OAuth 2.0 parameters
+        auth_params = {
+            'client_id': GOOGLE_CLIENT_ID,
+            'redirect_uri': GOOGLE_REDIRECT_URI,
+            'scope': 'openid email profile https://www.googleapis.com/auth/gmail.readonly',
+            'access_type': 'offline',
+            'response_type': 'code',
+            'state': state,
+            'prompt': 'consent'
+        }
+        
+                
+            try:
+                data = request.json
+                
+                # Save preferences to session
+                session['email_sync_frequency'] = int(data.get('email_sync_frequency', 24))
+                session['email_days_back'] = int(data.get('email_days_back', 30))
+                session['urgent_alerts_enabled'] = bool(data.get('urgent_alerts_enabled', True))
+                
+                return jsonify({'success': True})
+            except Exception as e:
+                logger.error(f"Error saving preferences: {str(e)}")
+                return jsonify({'success': False, 'error': str(e)}), 500
+    def api_reset_database():
+        """Reset the entire database and clear all user data using SQLAlchemy ORM models"""
+        if 'user_email' not in session:
+            return jsonify({'success': False, 'error': 'Not authenticated'}), 401
+        
+        user_email = session['user_email']
+        logger.info(f"Starting database reset for user {user_email}")
+        
+        # Get the database session
+        db = get_db()
+        
+        try:
+            # Delete all user data in the correct order to respect foreign key constraints
+            # First, delete tasks associated with the user
+            from models.database.tasks import Task
+            db.query(Task).filter_by(user_email=user_email).delete()
+            logger.info(f"Deleted tasks for user {user_email}")
+            
+            # Delete projects associated with the user
+            from models.database.projects import Project
+            db.query(Project).filter_by(user_email=user_email).delete()
+            logger.info(f"Deleted projects for user {user_email}")
+            
+            # Delete goals associated with the user
+            from models.database.goals import Goal
+            db.query(Goal).filter_by(user_email=user_email).delete()
+            logger.info(f"Deleted goals for user {user_email}")
+            
+            # Delete knowledge files associated with the user
+            from models.database.knowledge_files import KnowledgeFile
+            db.query(KnowledgeFile).filter_by(user_email=user_email).delete()
+            logger.info(f"Deleted knowledge files for user {user_email}")
+            
+            # Delete contacts associated with the user
+            from models.database.contacts import Contact
+            db.query(Contact).filter_by(user_email=user_email).delete()
+            logger.info(f"Deleted contacts for user {user_email}")
+            
+            # Delete sync status associated with the user
+            from models.database.sync_status import SyncStatus
+            db.query(SyncStatus).filter_by(user_email=user_email).delete()
+            logger.info(f"Deleted sync status for user {user_email}")
+            
+            # Reset global sync status if it belongs to the user
+            global sync_status
+            if sync_status and sync_status.get('user_email') == user_email:
+                sync_status = None
+                logger.info(f"Reset global sync status for user {user_email}")
+            
+            # Delete user intelligence data
+            from models.database.user_intelligence import UserIntelligence
+            db.query(UserIntelligence).filter_by(user_email=user_email).delete()
+            logger.info(f"Deleted user intelligence for user {user_email}")
+            
+            # Commit all changes
+            db.commit()
+            logger.info(f"Database reset completed successfully for user {user_email}")
+            
+            # Clear session data except for authentication
+            google_oauth_token = session.get('google_oauth_token')
+            session.clear()
+            session['user_email'] = user_email
+            if google_oauth_token:
+                session['google_oauth_token'] = google_oauth_token
+            
+            return jsonify({'success': True, 'message': 'Database has been reset successfully'})
+        
+        except Exception as e:
+            # Rollback in case of error
+            db.rollback()
+            error_details = traceback.format_exc()
+            logger.error(f"Error resetting database: {str(e)}")
+            logger.error(error_details)
+            return jsonify({'success': False, 'error': str(e)}), 500
+        finally:
+            db.close()
+
+    @app.route('/api/people/relationships', methods=['GET'])
+    def api_people_relationships():
+        """Get relationship data based on email activity"""
+        if 'user_email' not in session:
+            return jsonify({'error': 'Not authenticated'}), 401
+        
+        try:
+            # Check if we have a valid Gmail token
+            if 'google_oauth_token' not in session:
+                return jsonify({'success': False, 'error': 'Gmail not connected'}), 400
+                
+            # Use the Gmail API to get real relationship data
+            token_data = session['google_oauth_token']
+            gmail_connector = ImprovedGmailConnector(token_data)
+            
+            # Get email stats to find top relationships
+            emails_result = gmail_connector.get_recent_emails(days_back=30, max_results=100)
+            
+            if not emails_result.get('success'):
+                return jsonify({'success': False, 'error': emails_result.get('error')}), 500
+                
+            # Count email interactions by contact
+            contact_interactions = {}
+            for email in emails_result.get('emails', []):
+                # From contacts
+                if 'from' in email:
+                    from_email = email['from'].get('email')
+                    from_name = email['from'].get('name')
+                    if from_email and from_email != session['user_email']:
+                        if from_email not in contact_interactions:
+                            contact_interactions[from_email] = {
+                                'name': from_name or from_email.split('@')[0],
+                                'email': from_email,
+                                'organization': from_email.split('@')[1] if '@' in from_email else '',
+                                'emailCount': 1,
+                                'lastContact': email.get('date')
+                            }
+                        else:
+                            contact_interactions[from_email]['emailCount'] += 1
+                            # Update last contact if this email is more recent
+                            if email.get('date') > contact_interactions[from_email]['lastContact']:
+                                contact_interactions[from_email]['lastContact'] = email.get('date')
+                
+                # To contacts
+                for to in email.get('to', []):
+                    to_email = to.get('email')
+                    to_name = to.get('name')
+                    if to_email and to_email != session['user_email']:
+                        if to_email not in contact_interactions:
+                            contact_interactions[to_email] = {
+                                'name': to_name or to_email.split('@')[0],
+                                'email': to_email,
+                                'organization': to_email.split('@')[1] if '@' in to_email else '',
+                                'emailCount': 1,
+                                'lastContact': email.get('date')
+                            }
+                        else:
+                            contact_interactions[to_email]['emailCount'] += 1
+                            # Update last contact if this email is more recent
+                            if email.get('date') > contact_interactions[to_email]['lastContact']:
+                                contact_interactions[to_email]['lastContact'] = email.get('date')
+            
+            # Convert to list and sort by email count
+            relationships = list(contact_interactions.values())
+            relationships.sort(key=lambda x: x['emailCount'], reverse=True)
+            
+            # Limit to top 5 relationships
+            top_relationships = relationships[:5] if len(relationships) > 5 else relationships
+            
+            return jsonify({'success': True, 'relationships': top_relationships})
+        except Exception as e:
+            logger.error(f"Error fetching relationship data: {str(e)}")
+            return jsonify({'success': False, 'error': str(e)}), 500
+    
+    @app.route('/api/knowledge-graph/stats', methods=['GET'])
+    def api_knowledge_graph_stats():
+        """Get knowledge graph statistics"""
+        if 'user_email' not in session:
+            return jsonify({'error': 'Not authenticated'}), 401
+        
+        try:
+            # In a real implementation, this would fetch from a database
+            # For now, return sample data
+            sample_stats = {
+                'nodes': 156,
+                'edges': 243,
+                'concepts': 42,
+                'entities': 78,
+                'lastUpdated': '2025-05-30T18:30:00Z'
+            }
+            
+            return jsonify({'success': True, 'stats': sample_stats})
+        except Exception as e:
+            logger.error(f"Error fetching knowledge graph stats: {str(e)}")
+            return jsonify({'success': False, 'error': str(e)}), 500
+    
+    @app.route('/api/integrations/status', methods=['GET'])
+    def api_integrations_status():
+        """Get status of all integrations"""
+        if 'user_email' not in session:
+            return jsonify({'error': 'Not authenticated'}), 401
+            
+        try:
+            # Check Gmail connection status
+            gmail_status = {
+                'connected': 'google_oauth_token' in session,
+                'lastSynced': session.get('last_email_sync', 'Never'),
+                'emailCount': 0
+            }
+            
+            # If Gmail is connected, get real stats
+            if gmail_status['connected']:
+                try:
+                    token_data = session['google_oauth_token']
+                    gmail_connector = ImprovedGmailConnector(token_data)
+                    connection_test = gmail_connector.test_connection()
+                    
+                    if connection_test['success']:
+                        gmail_status['emailCount'] = connection_test.get('messages_total', 0)
+                    else:
+                        gmail_status['error'] = connection_test.get('error', 'Connection failed')
+                        # If connection failed, token might be invalid
+                        gmail_status['connected'] = False
+                except Exception as gmail_error:
+                    logger.error(f"Error getting Gmail status: {str(gmail_error)}")
+                    gmail_status['error'] = str(gmail_error)
+                    # If there was an error, consider the connection as failed
+                    gmail_status['connected'] = False
+            
+            # Check Neo4j connection status
+            neo4j_status = {
+                'connected': False,
+                'error': 'Not configured'
+            }
+            
+            # For now, calendar is not implemented
+            calendar_status = {
+                'connected': False,
+                'error': 'Not implemented'
+            }
+            
+            status = {
+                'gmail': gmail_status,
+                'calendar': calendar_status,
+                'neo4j': neo4j_status
+            }
+            
+            return jsonify({'success': True, 'status': status})
+        except Exception as e:
+            logger.error(f"Error fetching integration status: {str(e)}")
+            return jsonify({'success': False, 'error': str(e)}), 500
+            
+    @app.route('/api/auth/gmail/revoke', methods=['POST'])
+    def api_auth_gmail_revoke():
+        """Revoke Gmail OAuth token and remove from session"""
+        if 'user_email' not in session:
+            return jsonify({'error': 'Not authenticated'}), 401
+            
+        try:
+            # Check if token exists in session
+            if 'google_oauth_token' not in session:
+                return jsonify({'success': True, 'message': 'No token to revoke'})
+                
+            # Get token data
+            token_data = session['google_oauth_token']
+            
+            # Try to revoke the token with Google
+            try:
+                # Create credentials object
+                credentials = google.oauth2.credentials.Credentials(**token_data)
+                
+                # Revoke token
+                requests.post('https://oauth2.googleapis.com/revoke',
+                    params={'token': credentials.token},
+                    headers={'content-type': 'application/x-www-form-urlencoded'})
+                    
+            except Exception as revoke_error:
+                # Log error but continue to remove from session
+                logger.error(f"Error revoking token with Google: {str(revoke_error)}")
+                
+            # Remove token from session
+            session.pop('google_oauth_token', None)
+            
+            return jsonify({'success': True, 'message': 'Gmail disconnected successfully'})
+        except Exception as e:
+            logger.error(f"Error revoking Gmail token: {str(e)}")
+            return jsonify({'success': False, 'error': str(e)}), 500
+            
+    @app.route('/api/auth/gmail/refresh', methods=['POST'])
+    def api_auth_gmail_refresh():
+        """Refresh Gmail OAuth token"""
+        if 'user_email' not in session:
+            return jsonify({'error': 'Not authenticated'}), 401
+            
+        try:
+            # Check if token exists in session
+            if 'google_oauth_token' not in session:
+                return jsonify({'success': False, 'error': 'No token to refresh'}), 400
+                
+            # Get token data
+            token_data = session['google_oauth_token']
+            
+            # Create credentials object
+            credentials = google.oauth2.credentials.Credentials(**token_data)
+            
+            # Check if refresh token exists
+            if not credentials.refresh_token:
+                return jsonify({'success': False, 'error': 'No refresh token available. Please reconnect Gmail.'}), 400
+                
+            # Refresh the token
+            request = google.auth.transport.requests.Request()
+            credentials.refresh(request)
+            
+            # Update token in session
+            session['google_oauth_token'] = {
+                'token': credentials.token,
+                'refresh_token': credentials.refresh_token,
+                'token_uri': credentials.token_uri,
+                'client_id': credentials.client_id,
+                'client_secret': credentials.client_secret,
+                'scopes': credentials.scopes
+            }
+            
+            return jsonify({'success': True, 'message': 'Gmail token refreshed successfully'})
+        except Exception as e:
+            logger.error(f"Error refreshing Gmail token: {str(e)}")
+            return jsonify({'success': False, 'error': str(e)}), 500
+    
+    @app.route('/api/insights', methods=['GET'])
+    def api_insights():
+        """Get insights data from the database"""
+        if 'user_email' not in session:
+            return jsonify({'error': 'Not authenticated'}), 401
+        
+        user_email = session['user_email']
+        
+        # Check if force refresh is requested
+        force_refresh = request.args.get('refresh', 'false').lower() == 'true'
+        
+        try:
+            # Initialize services
+            from services.intelligence_service import IntelligenceService
+            from services.structured_knowledge_service import StructuredKnowledgeService
+            from models.database.insights_storage import UserIntelligence, EmailSyncStatus
+            from models.database.structured_knowledge import Project
+            from models.database.tasks import Task
+            from datetime import datetime, timedelta
+            from sqlalchemy import desc, func
+            
+            intelligence_service = IntelligenceService(database_url, claude_client)
+            structured_knowledge_service = StructuredKnowledgeService(database_url)
+            
+            # Create a database session
+            db = intelligence_service.SessionLocal()
+            
+            try:
+                # Get projects data
+                projects_data = []
+                projects = db.query(Project).filter(Project.user_email == user_email).all()
+                
+                for project in projects:
+                    # Get email count related to this project (simplified)
+                    # Since UserIntelligence doesn't have project_id, we'll just use a default count
+                    email_count = 0
+                    # You can implement a proper count if you have a way to link emails to projects
+                    
+                    # Get people involved in this project
+                    people = []
+                    if project.stakeholders:
+                        for stakeholder in project.stakeholders:
+                            if '@' in stakeholder:  # Simple validation
+                                name = stakeholder.split('@')[0].replace('.', ' ').title()
+                                people.append({
+                                    'name': name,
+                                    'email': stakeholder
+                                })
+                    
+                    projects_data.append({
+                        'name': project.name,
+                        'description': project.description,
+                        'lastActivity': project.updated_at.isoformat() if project.updated_at else datetime.now().isoformat(),
+                        'emailCount': email_count,
+                        'people': people
+                    })
+                
+                # Get email activity for the last 7 days
+                email_activity = []
+                end_date = datetime.now()
+                start_date = end_date - timedelta(days=7)
+                
+                for i in range(7):
+                    current_date = start_date + timedelta(days=i)
+                    date_str = current_date.strftime('%Y-%m-%d')
+                    
+                    # Count insights for this day
+                    count = db.query(UserIntelligence).filter(
+                        UserIntelligence.user_email == user_email,
+                        func.date(UserIntelligence.created_at) == current_date.date()
+                    ).count()
+                    
+                    email_activity.append({
+                        'date': date_str,
+                        'count': count
+                    })
+                
+                # Get generated insights
+                insights_data = []
+                insights = db.query(UserIntelligence).filter(
+                    UserIntelligence.user_email == user_email
+                ).order_by(desc(UserIntelligence.created_at)).limit(10).all()
+                
+                for idx, insight in enumerate(insights):
+                    # Determine insight type based on content or other attributes
+                    # since insight_type doesn't exist in the model
+                    insight_type = 'action'  # Default type
+                    
+                    # Extract insight text from the appropriate field
+                    # Assuming the insight text is stored in one of these JSON fields
+                    insight_text = ''
+                    if insight.tactical_notifications and len(insight.tactical_notifications) > 0:
+                        insight_text = insight.tactical_notifications[0].get('text', '')
+                    elif insight.last_email_analysis:
+                        insight_text = insight.last_email_analysis.get('summary', '')
+                    
+                    # Determine source
+                    source = 'email'
+                    
+                    insights_data.append({
+                        'id': str(insight.id),
+                        'type': insight_type,
+                        'content': insight_text,
+                        'source': source,
+                        'date': insight.created_at.isoformat(),
+                        'priority': 'medium'
+                    })
+                
+                # Get tasks
+                tasks = db.query(Task).filter(Task.user_email == user_email).all()
+                tasks_data = [{
+                    'id': str(task.id),
+                    'title': task.title,
+                    'description': task.description,
+                    'status': task.status,
+                    'priority': task.priority,
+                    'due_date': task.due_date.isoformat() if task.due_date else None,
+                    'created_at': task.created_at.isoformat() if task.created_at else None
+                } for task in tasks]
+                
+                result = {
+                    'success': True,
+                    'projects': projects_data,
+                    'emailActivity': email_activity,
+                    'generatedInsights': insights_data,
+                    'tasks': tasks_data
+                }
+                
+                return jsonify(result)
+            
+            finally:
+                db.close()
+        except Exception as e:
+            logger.error(f"Error fetching insights data: {str(e)}")
+            return jsonify({'success': False, 'error': str(e)}), 500
+    
+    @app.route('/api/force-refresh', methods=['POST'])
+    def api_force_refresh():
+        """Force refresh all data from Gmail"""
+        if 'user_email' not in session:
+            return jsonify({'success': False, 'error': 'Not authenticated'}), 401
+            
+        if 'google_oauth_token' not in session:
+            return jsonify({'success': False, 'error': 'Gmail not connected'}), 400
+            
+        try:
+            # Get the token data
+            token_data = session['google_oauth_token']
+            user_email = session['user_email']
+            logger.info(f"Starting force refresh for user: {user_email}")
+            
+            # Initialize the Gmail connector
+            gmail_connector = ImprovedGmailConnector(token_data)
+            logger.info("Gmail connector initialized")
+            
+            # Test the connection to Gmail API
+            test_result = gmail_connector.test_connection()
+            if not test_result.get('success'):
+                logger.error(f"Gmail connection test failed: {test_result.get('error')}")
+                return jsonify({'success': False, 'error': f"Gmail connection failed: {test_result.get('error')}"}), 500
+            
+            logger.info("Gmail connection test successful")
+            
+            # Start a background thread to sync emails
+            def sync_emails_background():
+                global sync_status
+                sync_status['is_syncing'] = True
+                sync_status['progress'] = 0
+                sync_status['user_email'] = user_email
+                sync_status['sync_type'] = 'full'
+                
+                try:
+                    # Get recent emails
+                    logger.info("Fetching recent emails from Gmail...")
+                    emails_result = gmail_connector.get_recent_emails(days_back=30, max_results=100)
+                    
+                    if not emails_result.get('success'):
+                        logger.error(f"Error fetching emails: {emails_result.get('error')}")
+                        sync_status['is_syncing'] = False
+                        return
+                    
+                    # Process emails and update database
+                    emails = emails_result.get('emails', [])
+                    total_emails = len(emails)
+                    logger.info(f"Retrieved {total_emails} emails from Gmail")
+                    
+                    if total_emails == 0:
+                        logger.warning("No emails retrieved from Gmail API")
+                        sync_status['is_syncing'] = False
+                        sync_status['progress'] = 100
+                        sync_status['last_sync'] = datetime.now().isoformat()
+                        return
+                    
+                    # Initialize services
+                    from services.intelligence_service import IntelligenceService
+                    intelligence_service = IntelligenceService(database_url, claude_client)
+                    logger.info("Intelligence service initialized")
+                    
+                    # Process each email
+                    for i, email in enumerate(emails):
+                        # Update progress
+                        sync_status['progress'] = int((i / total_emails) * 100)
+                        
+                        # Log email details for debugging
+                        logger.info(f"Processing email {i+1}/{total_emails}: {email.get('subject', 'No subject')}")
+                        
+                        # Process the email using our implementation
+                        try:
+                            intelligence_service.process_email(email, user_email)
+                            logger.info(f"Successfully processed email {i+1}/{total_emails}")
+                        except Exception as email_error:
+                            logger.error(f"Error processing email {i+1}: {str(email_error)}")
+                            logger.error(traceback.format_exc())
+                            # Continue with next email instead of failing the entire process
+                            continue
+                    
+                    # Update sync status
+                    sync_status['is_syncing'] = False
+                    sync_status['progress'] = 100
+                    sync_status['last_sync'] = datetime.now().isoformat()
+                    logger.info(f"Email sync completed successfully for user {user_email}")
+                    
+                except Exception as e:
+                    logger.error(f"Error in sync background task: {str(e)}")
+                    logger.error(traceback.format_exc())
+                    sync_status['is_syncing'] = False
+            
+            # Start the background thread if not already syncing
+            if not sync_status['is_syncing']:
+                sync_thread = threading.Thread(target=sync_emails_background)
+                sync_thread.daemon = True
+                sync_thread.start()
+                return jsonify({'success': True, 'message': 'Sync started'})
+            else:
+                return jsonify({'success': False, 'error': 'Sync already in progress'}), 400
+                
+        except Exception as e:
+            logger.error(f"Error starting force refresh: {str(e)}")
+            return jsonify({'success': False, 'error': str(e)}), 500
+            
+    # Sync status endpoint moved to line ~417
     
     @app.route('/api/chat', methods=['POST'])
     def api_chat():
@@ -496,7 +1193,7 @@ def create_app():
             # Send message to Claude
             try:
                 response = claude_client.messages.create(
-                    model="claude-3-opus-20240229",
+                    model=CLAUDE_MODEL,
                     max_tokens=2000,
                     temperature=0.7,
                     system=context,
@@ -510,7 +1207,7 @@ def create_app():
                 # Fallback for older SDK versions
                 logger.info("Using fallback Claude client interface for chat")
                 response = claude_client.completions.create(
-                    model="claude-3-opus-20240229",
+                    model=CLAUDE_MODEL,
                     max_tokens=2000,
                     temperature=0.7,
                     system=context,

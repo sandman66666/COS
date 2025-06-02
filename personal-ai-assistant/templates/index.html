@@ -1,206 +1,123 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Personal AI Assistant</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            padding: 20px;
-        }
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-        }
-        .header {
-            background: rgba(255, 255, 255, 0.95);
-            padding: 30px;
-            border-radius: 16px;
-            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
-            margin-bottom: 30px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            backdrop-filter: blur(10px);
-        }
-        .welcome {
-            display: flex;
-            align-items: center;
-            gap: 15px;
-        }
-        .avatar {
-            width: 60px;
-            height: 60px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 24px;
-            color: white;
-        }
-        .welcome-text h1 {
-            color: #333;
-            font-size: 32px;
-            margin-bottom: 5px;
-        }
-        .welcome-text p {
-            color: #666;
-            font-size: 16px;
-        }
-        .nav {
-            display: flex;
-            gap: 15px;
-        }
-        .btn {
-            padding: 12px 24px;
-            border-radius: 8px;
-            text-decoration: none;
-            font-weight: 500;
-            transition: all 0.3s ease;
-            cursor: pointer;
-            border: none;
-            font-size: 16px;
-        }
-        .btn-primary {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-        }
-        .btn-primary:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 16px rgba(102, 126, 234, 0.4);
-        }
-        .btn-secondary {
-            background: rgba(255, 255, 255, 0.8);
-            color: #333;
-            border: 1px solid rgba(0,0,0,0.1);
-        }
-        .btn-secondary:hover {
-            background: rgba(255, 255, 255, 0.95);
-        }
-        .main-content {
-            background: rgba(255, 255, 255, 0.95);
-            border-radius: 16px;
-            padding: 40px;
-            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
-            backdrop-filter: blur(10px);
-        }
-        .feature-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 30px;
-            margin-top: 30px;
-        }
-        .feature-card {
-            background: rgba(255, 255, 255, 0.8);
-            padding: 30px;
-            border-radius: 12px;
-            border: 1px solid rgba(0,0,0,0.05);
-            transition: all 0.3s ease;
-        }
-        .feature-card:hover {
-            transform: translateY(-4px);
-            box-shadow: 0 8px 24px rgba(0,0,0,0.1);
-        }
-        .feature-icon {
-            font-size: 48px;
-            margin-bottom: 20px;
-            display: block;
-        }
-        .feature-card h3 {
-            color: #333;
-            margin-bottom: 15px;
-            font-size: 20px;
-        }
-        .feature-card p {
-            color: #666;
-            line-height: 1.6;
-        }
-        .status-badge {
-            display: inline-block;
-            padding: 4px 12px;
-            border-radius: 20px;
-            font-size: 12px;
-            font-weight: 600;
-            margin-left: 10px;
-        }
-        .status-ready {
-            background: #d4edda;
-            color: #155724;
-        }
-        .status-coming {
-            background: #fff3cd;
-            color: #856404;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="header">
-            <div class="welcome">
-                <div class="avatar">🤖</div>
-                <div class="welcome-text">
-                    <h1>Hi {{ name }}! 👋</h1>
-                    <p>Welcome to your Personal AI Assistant powered by Claude</p>
+{% extends "layout.html" %}
+
+{% block title %}Dashboard | Chief of Staff AI{% endblock %}
+
+{% block content %}
+<div class="content-container">
+    <div class="header">
+        <h1>Welcome, {{ name }}! 👋</h1>
+        <p class="mb-0">Your AI Chief of Staff is ready to assist you</p>
+    </div>
+    
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h5 class="card-title"><i class="bi bi-lightning-charge"></i> Quick Actions</h5>
+                    <div class="d-grid gap-2 mt-3">
+                        <a href="/chat" class="btn btn-primary"><i class="bi bi-chat-dots"></i> Start a Conversation</a>
+                        <a href="/tasks" class="btn btn-outline-primary"><i class="bi bi-check2-square"></i> View Tasks</a>
+                        <a href="/integrations" class="btn btn-outline-primary"><i class="bi bi-envelope"></i> Sync Emails</a>
+                    </div>
                 </div>
-            </div>
-            <div class="nav">
-                <button onclick="window.location.href='/chat'" class="btn btn-primary">Start Chatting</button>
-                <button onclick="window.location.href='/settings'" class="btn btn-secondary">Settings</button>
-                <button onclick="window.location.href='/logout'" class="btn btn-secondary">Logout</button>
             </div>
         </div>
-
-        <div class="main-content">
-            <h2>🎉 Setup Complete!</h2>
-            <p>Your Personal AI Assistant is ready to help you manage your tasks, emails, and schedule more effectively.</p>
-
-            <div class="feature-grid">
-                <div class="feature-card">
-                    <span class="feature-icon">💬</span>
-                    <h3>Chat with Claude <span class="status-badge status-coming">Coming Soon</span></h3>
-                    <p>Have natural conversations with Claude about your work, get insights, and ask questions about your data.</p>
-                </div>
-
-                <div class="feature-card" onclick="window.location.href='/email-insights'" style="cursor: pointer;">
-                    <span class="feature-icon">📧</span>
-                    <h3>Gmail Integration <span class="status-badge status-ready">Ready</span></h3>
-                    <p>Claude has native access to your Gmail and can help analyze emails, draft responses, and manage your inbox.</p>
-                </div>
-
-                <div class="feature-card">
-                    <span class="feature-icon">📅</span>
-                    <h3>Calendar Intelligence <span class="status-badge status-ready">Ready</span></h3>
-                    <p>Get insights about your schedule, optimal meeting times, and calendar optimization suggestions.</p>
-                </div>
-
-                <div class="feature-card">
-                    <span class="feature-icon">✅</span>
-                    <h3>ClickUp Tasks <span class="status-badge status-coming">Coming Soon</span></h3>
-                    <p>Connect your ClickUp workspace to get intelligent task prioritization and project insights.</p>
-                </div>
-
-                <div class="feature-card">
-                    <span class="feature-icon">🔄</span>
-                    <h3>Smart Triggers <span class="status-badge status-coming">Coming Soon</span></h3>
-                    <p>Save prompts to run automatically and get proactive insights delivered to your desktop.</p>
-                </div>
-
-                <div class="feature-card" onclick="window.location.href='/email-insights'" style="cursor: pointer;">
-                    <span class="feature-icon">🧠</span>
-                    <h3>Email Intelligence <span class="status-badge status-ready">Ready</span></h3>
-                    <p>Get strategic insights about your email communications, key relationships, and action items.</p>
+        <div class="col-md-6">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h5 class="card-title"><i class="bi bi-info-circle"></i> System Status</h5>
+                    <ul class="list-group list-group-flush mt-3">
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            Gmail Connection
+                            {% if session.access_token %}
+                                <span class="badge bg-success">Connected</span>
+                            {% else %}
+                                <span class="badge bg-warning text-dark">Not Connected</span>
+                            {% endif %}
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            Neo4j Knowledge Graph
+                            {% if neo4j_available %}
+                                <span class="badge bg-success">Connected</span>
+                            {% else %}
+                                <span class="badge bg-warning text-dark">Not Connected</span>
+                            {% endif %}
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            Claude API
+                            {% if claude_api_key %}
+                                <span class="badge bg-success">Connected</span>
+                            {% else %}
+                                <span class="badge bg-warning text-dark">Not Connected</span>
+                            {% endif %}
+                        </li>
+                    </ul>
                 </div>
             </div>
         </div>
     </div>
-</body>
-</html>
+    
+    <div class="row">
+        <div class="col-md-4">
+            <div class="card mb-4">
+                <div class="card-body text-center">
+                    <i class="bi bi-chat-dots" style="font-size: 2rem; color: #4a6fdc;"></i>
+                    <h5 class="card-title mt-3">Chat</h5>
+                    <p class="card-text">Have natural conversations with Claude about your work, emails, and tasks.</p>
+                    <a href="/chat" class="btn btn-primary">Open Chat</a>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card mb-4">
+                <div class="card-body text-center">
+                    <i class="bi bi-check2-square" style="font-size: 2rem; color: #4a6fdc;"></i>
+                    <h5 class="card-title mt-3">Tasks</h5>
+                    <p class="card-text">View and manage tasks extracted from your emails and conversations.</p>
+                    <a href="/tasks" class="btn btn-primary">View Tasks</a>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card mb-4">
+                <div class="card-body text-center">
+                    <i class="bi bi-journal-text" style="font-size: 2rem; color: #4a6fdc;"></i>
+                    <h5 class="card-title mt-3">Knowledge</h5>
+                    <p class="card-text">Access and edit your knowledge base including uploaded files and email summaries.</p>
+                    <a href="/knowledge" class="btn btn-primary">View Knowledge</a>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card mb-4">
+                <div class="card-body text-center">
+                    <i class="bi bi-graph-up" style="font-size: 2rem; color: #4a6fdc;"></i>
+                    <h5 class="card-title mt-3">Insights</h5>
+                    <p class="card-text">Get strategic insights about your email communications and relationships.</p>
+                    <a href="/email-insights" class="btn btn-primary">View Insights</a>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card mb-4">
+                <div class="card-body text-center">
+                    <i class="bi bi-people" style="font-size: 2rem; color: #4a6fdc;"></i>
+                    <h5 class="card-title mt-3">People</h5>
+                    <p class="card-text">View and edit information about people in your network.</p>
+                    <a href="/people" class="btn btn-primary">View People</a>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card mb-4">
+                <div class="card-body text-center">
+                    <i class="bi bi-plug" style="font-size: 2rem; color: #4a6fdc;"></i>
+                    <h5 class="card-title mt-3">Integrations</h5>
+                    <p class="card-text">Connect with email and other services, sync data, and manage connections.</p>
+                    <a href="/integrations" class="btn btn-primary">Manage Integrations</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,510 @@
+{% extends "layout.html" %}
+
+{% block title %}Integrations | Chief of Staff AI{% endblock %}
+
+{% block additional_styles %}
+<style>
+    .integration-card {
+        background-color: #fff;
+        border-radius: 10px;
+        padding: 1.5rem;
+        margin-bottom: 1.5rem;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    .integration-header {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        margin-bottom: 1rem;
+    }
+    .integration-icon {
+        width: 48px;
+        height: 48px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.5rem;
+        color: #4a6fdc;
+    }
+    .integration-title {
+        margin: 0;
+        font-size: 1.25rem;
+    }
+    .integration-status {
+        margin-left: auto;
+    }
+    .integration-description {
+        margin-bottom: 1rem;
+        color: #6c757d;
+    }
+    .integration-actions {
+        display: flex;
+        gap: 0.5rem;
+    }
+    .integration-settings {
+        margin-top: 1rem;
+        padding-top: 1rem;
+        border-top: 1px solid #dee2e6;
+    }
+    .settings-title {
+        font-weight: 500;
+        margin-bottom: 1rem;
+    }
+    .settings-form {
+        max-width: 600px;
+    }
+    .badge-connected {
+        background-color: #28a745;
+        color: white;
+    }
+    .badge-disconnected {
+        background-color: #dc3545;
+        color: white;
+    }
+    .badge-partial {
+        background-color: #ffc107;
+        color: #212529;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="content-container">
+    <div class="header">
+        <h1>Integrations</h1>
+        <p class="mb-0">Connect your accounts and services</p>
+    </div>
+    
+    <div class="integration-card">
+        <div class="integration-header">
+            <div class="integration-icon">
+                <i class="bi bi-google"></i>
+            </div>
+            <h2 class="integration-title">Gmail</h2>
+            <div class="integration-status">
+                <span class="badge badge-connected" id="gmailStatus">Connected</span>
+            </div>
+        </div>
+        <div class="integration-description">
+            Connect your Gmail account to analyze emails, extract knowledge, and generate tasks.
+        </div>
+        <div class="integration-actions">
+            <button class="btn btn-primary" id="connectGmailBtn" style="display: none;">
+                <i class="bi bi-link"></i> Connect Gmail
+            </button>
+            <button class="btn btn-outline-danger" id="disconnectGmailBtn">
+                <i class="bi bi-link-break"></i> Disconnect
+            </button>
+            <button class="btn btn-outline-secondary" id="refreshGmailBtn">
+                <i class="bi bi-arrow-repeat"></i> Refresh Token
+            </button>
+        </div>
+        <div class="integration-settings">
+            <h3 class="settings-title">Gmail Settings</h3>
+            <form class="settings-form" id="gmailSettingsForm">
+                <div class="mb-3">
+                    <label for="emailSyncDays" class="form-label">Sync emails from last</label>
+                    <select class="form-select" id="emailSyncDays">
+                        <option value="7">7 days</option>
+                        <option value="30" selected>30 days</option>
+                        <option value="90">90 days</option>
+                        <option value="180">180 days</option>
+                        <option value="365">365 days</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label for="emailProcessingLimit" class="form-label">Maximum emails to process per run</label>
+                    <input type="number" class="form-control" id="emailProcessingLimit" value="100">
+                </div>
+                <div class="mb-3 form-check">
+                    <input type="checkbox" class="form-check-input" id="processUnreadOnly">
+                    <label class="form-check-label" for="processUnreadOnly">Process unread emails only</label>
+                </div>
+                <div class="mb-3 form-check">
+                    <input type="checkbox" class="form-check-input" id="autoExtractTasks" checked>
+                    <label class="form-check-label" for="autoExtractTasks">Automatically extract tasks from emails</label>
+                </div>
+                <button type="submit" class="btn btn-primary">Save Settings</button>
+            </form>
+        </div>
+    </div>
+    
+    <div class="integration-card">
+        <div class="integration-header">
+            <div class="integration-icon">
+                <i class="bi bi-diagram-3"></i>
+            </div>
+            <h2 class="integration-title">Neo4j Knowledge Graph</h2>
+            <div class="integration-status">
+                <span class="badge badge-connected" id="neo4jStatus">Connected</span>
+            </div>
+        </div>
+        <div class="integration-description">
+            Connect to Neo4j to store and visualize your knowledge graph.
+        </div>
+        <div class="integration-actions">
+            <button class="btn btn-primary" id="connectNeo4jBtn" style="display: none;">
+                <i class="bi bi-link"></i> Connect Neo4j
+            </button>
+            <button class="btn btn-outline-danger" id="disconnectNeo4jBtn">
+                <i class="bi bi-link-break"></i> Disconnect
+            </button>
+            <button class="btn btn-outline-secondary" id="testNeo4jBtn">
+                <i class="bi bi-check-circle"></i> Test Connection
+            </button>
+        </div>
+        <div class="integration-settings">
+            <h3 class="settings-title">Neo4j Settings</h3>
+            <form class="settings-form" id="neo4jSettingsForm">
+                <div class="mb-3">
+                    <label for="neo4jUri" class="form-label">Neo4j URI</label>
+                    <input type="text" class="form-control" id="neo4jUri" value="bolt://localhost:7687">
+                </div>
+                <div class="mb-3">
+                    <label for="neo4jUsername" class="form-label">Username</label>
+                    <input type="text" class="form-control" id="neo4jUsername" value="neo4j">
+                </div>
+                <div class="mb-3">
+                    <label for="neo4jPassword" class="form-label">Password</label>
+                    <input type="password" class="form-control" id="neo4jPassword" value="password">
+                </div>
+                <div class="mb-3 form-check">
+                    <input type="checkbox" class="form-check-input" id="neo4jEncryption">
+                    <label class="form-check-label" for="neo4jEncryption">Use encryption</label>
+                </div>
+                <button type="submit" class="btn btn-primary">Save Settings</button>
+            </form>
+        </div>
+    </div>
+    
+    <div class="integration-card">
+        <div class="integration-header">
+            <div class="integration-icon">
+                <i class="bi bi-robot"></i>
+            </div>
+            <h2 class="integration-title">Claude API</h2>
+            <div class="integration-status">
+                <span class="badge badge-connected" id="claudeStatus">Connected</span>
+            </div>
+        </div>
+        <div class="integration-description">
+            Configure Claude API for AI-powered insights, entity extraction, and task generation.
+        </div>
+        <div class="integration-actions">
+            <button class="btn btn-primary" id="connectClaudeBtn" style="display: none;">
+                <i class="bi bi-link"></i> Configure API
+            </button>
+            <button class="btn btn-outline-danger" id="disconnectClaudeBtn">
+                <i class="bi bi-link-break"></i> Remove API Key
+            </button>
+            <button class="btn btn-outline-secondary" id="testClaudeBtn">
+                <i class="bi bi-check-circle"></i> Test API
+            </button>
+        </div>
+        <div class="integration-settings">
+            <h3 class="settings-title">Claude API Settings</h3>
+            <form class="settings-form" id="claudeSettingsForm">
+                <div class="mb-3">
+                    <label for="claudeApiKey" class="form-label">API Key</label>
+                    <input type="password" class="form-control" id="claudeApiKey" value="●●●●●●●●●●●●●●●●">
+                </div>
+                <div class="mb-3">
+                    <label for="claudeModel" class="form-label">Model</label>
+                    <select class="form-select" id="claudeModel">
+                        <option value="claude-3-opus-20240229">Claude 3 Opus</option>
+                        <option value="claude-3-sonnet-20240229" selected>Claude 3 Sonnet</option>
+                        <option value="claude-3-haiku-20240307">Claude 3 Haiku</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label for="claudeTemperature" class="form-label">Temperature: <span id="temperatureValue">0.7</span></label>
+                    <input type="range" class="form-range" min="0" max="1" step="0.1" id="claudeTemperature" value="0.7">
+                </div>
+                <button type="submit" class="btn btn-primary">Save Settings</button>
+            </form>
+        </div>
+    </div>
+    
+    <div class="integration-card">
+        <div class="integration-header">
+            <div class="integration-icon">
+                <i class="bi bi-calendar-event"></i>
+            </div>
+            <h2 class="integration-title">Google Calendar</h2>
+            <div class="integration-status">
+                <span class="badge badge-disconnected" id="calendarStatus">Disconnected</span>
+            </div>
+        </div>
+        <div class="integration-description">
+            Connect your Google Calendar to track meetings and schedule events.
+        </div>
+        <div class="integration-actions">
+            <button class="btn btn-primary" id="connectCalendarBtn">
+                <i class="bi bi-link"></i> Connect Calendar
+            </button>
+            <button class="btn btn-outline-danger" id="disconnectCalendarBtn" style="display: none;">
+                <i class="bi bi-link-break"></i> Disconnect
+            </button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Gmail settings form
+        const gmailSettingsForm = document.getElementById('gmailSettingsForm');
+        gmailSettingsForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const settings = {
+                syncDays: document.getElementById('emailSyncDays').value,
+                processingLimit: document.getElementById('emailProcessingLimit').value,
+                processUnreadOnly: document.getElementById('processUnreadOnly').checked,
+                autoExtractTasks: document.getElementById('autoExtractTasks').checked
+            };
+            
+            fetch('/api/settings/gmail', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(settings),
+            })
+            .then(response => response.json())
+            .then(data => {
+                alert('Gmail settings saved successfully!');
+            })
+            .catch(error => {
+                console.error('Error saving Gmail settings:', error);
+                alert('Failed to save Gmail settings. Please try again.');
+            });
+        });
+        
+        // Neo4j settings form
+        const neo4jSettingsForm = document.getElementById('neo4jSettingsForm');
+        neo4jSettingsForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const settings = {
+                uri: document.getElementById('neo4jUri').value,
+                username: document.getElementById('neo4jUsername').value,
+                password: document.getElementById('neo4jPassword').value,
+                encryption: document.getElementById('neo4jEncryption').checked
+            };
+            
+            fetch('/api/settings/neo4j', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(settings),
+            })
+            .then(response => response.json())
+            .then(data => {
+                alert('Neo4j settings saved successfully!');
+            })
+            .catch(error => {
+                console.error('Error saving Neo4j settings:', error);
+                alert('Failed to save Neo4j settings. Please try again.');
+            });
+        });
+        
+        // Claude API settings form
+        const claudeSettingsForm = document.getElementById('claudeSettingsForm');
+        claudeSettingsForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const settings = {
+                apiKey: document.getElementById('claudeApiKey').value,
+                model: document.getElementById('claudeModel').value,
+                temperature: document.getElementById('claudeTemperature').value
+            };
+            
+            fetch('/api/settings/claude', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(settings),
+            })
+            .then(response => response.json())
+            .then(data => {
+                alert('Claude API settings saved successfully!');
+            })
+            .catch(error => {
+                console.error('Error saving Claude API settings:', error);
+                alert('Failed to save Claude API settings. Please try again.');
+            });
+        });
+        
+        // Temperature slider
+        const temperatureSlider = document.getElementById('claudeTemperature');
+        const temperatureValue = document.getElementById('temperatureValue');
+        
+        temperatureSlider.addEventListener('input', function() {
+            temperatureValue.textContent = this.value;
+        });
+        
+        // Connect/Disconnect Gmail
+        document.getElementById('connectGmailBtn').addEventListener('click', function() {
+            window.location.href = '/auth/gmail';
+        });
+        
+        document.getElementById('disconnectGmailBtn').addEventListener('click', function() {
+            if (!confirm('Are you sure you want to disconnect Gmail? This will prevent email analysis and knowledge extraction.')) return;
+            
+            fetch('/api/auth/gmail/revoke', {
+                method: 'POST',
+            })
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('gmailStatus').className = 'badge badge-disconnected';
+                document.getElementById('gmailStatus').textContent = 'Disconnected';
+                document.getElementById('connectGmailBtn').style.display = 'inline-block';
+                document.getElementById('disconnectGmailBtn').style.display = 'none';
+                document.getElementById('refreshGmailBtn').style.display = 'none';
+            })
+            .catch(error => {
+                console.error('Error disconnecting Gmail:', error);
+                alert('Failed to disconnect Gmail. Please try again.');
+            });
+        });
+        
+        document.getElementById('refreshGmailBtn').addEventListener('click', function() {
+            fetch('/api/auth/gmail/refresh', {
+                method: 'POST',
+            })
+            .then(response => response.json())
+            .then(data => {
+                alert('Gmail token refreshed successfully!');
+            })
+            .catch(error => {
+                console.error('Error refreshing Gmail token:', error);
+                alert('Failed to refresh Gmail token. Please try again.');
+            });
+        });
+        
+        // Connect/Disconnect Neo4j
+        document.getElementById('testNeo4jBtn').addEventListener('click', function() {
+            fetch('/api/settings/neo4j/test', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    uri: document.getElementById('neo4jUri').value,
+                    username: document.getElementById('neo4jUsername').value,
+                    password: document.getElementById('neo4jPassword').value,
+                    encryption: document.getElementById('neo4jEncryption').checked
+                }),
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert('Neo4j connection successful!');
+                } else {
+                    alert('Neo4j connection failed: ' + data.error);
+                }
+            })
+            .catch(error => {
+                console.error('Error testing Neo4j connection:', error);
+                alert('Failed to test Neo4j connection. Please try again.');
+            });
+        });
+        
+        // Test Claude API
+        document.getElementById('testClaudeBtn').addEventListener('click', function() {
+            fetch('/api/settings/claude/test', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    apiKey: document.getElementById('claudeApiKey').value,
+                    model: document.getElementById('claudeModel').value
+                }),
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert('Claude API connection successful!');
+                } else {
+                    alert('Claude API connection failed: ' + data.error);
+                }
+            })
+            .catch(error => {
+                console.error('Error testing Claude API:', error);
+                alert('Failed to test Claude API. Please try again.');
+            });
+        });
+        
+        // Connect Google Calendar
+        document.getElementById('connectCalendarBtn').addEventListener('click', function() {
+            window.location.href = '/auth/calendar';
+        });
+        
+        // Fetch integration status
+        function fetchIntegrationStatus() {
+            fetch('/api/integrations/status')
+                .then(response => response.json())
+                .then(data => {
+                    // Update Gmail status
+                    if (data.success && data.status && data.status.gmail && data.status.gmail.connected) {
+                        document.getElementById('gmailStatus').className = 'badge badge-connected';
+                        document.getElementById('gmailStatus').textContent = 'Connected';
+                        document.getElementById('connectGmailBtn').style.display = 'none';
+                        document.getElementById('disconnectGmailBtn').style.display = 'inline-block';
+                        document.getElementById('refreshGmailBtn').style.display = 'inline-block';
+                    } else {
+                        document.getElementById('gmailStatus').className = 'badge badge-disconnected';
+                        document.getElementById('gmailStatus').textContent = 'Disconnected';
+                        document.getElementById('connectGmailBtn').style.display = 'inline-block';
+                        document.getElementById('disconnectGmailBtn').style.display = 'none';
+                        document.getElementById('refreshGmailBtn').style.display = 'none';
+                    }
+                    
+                    // Update Neo4j status
+                    if (data.success && data.status && data.status.neo4j && data.status.neo4j.connected) {
+                        document.getElementById('neo4jStatus').className = 'badge badge-connected';
+                        document.getElementById('neo4jStatus').textContent = 'Connected';
+                        document.getElementById('connectNeo4jBtn').style.display = 'none';
+                        document.getElementById('disconnectNeo4jBtn').style.display = 'inline-block';
+                    } else {
+                        document.getElementById('neo4jStatus').className = 'badge badge-disconnected';
+                        document.getElementById('neo4jStatus').textContent = 'Disconnected';
+                        document.getElementById('connectNeo4jBtn').style.display = 'inline-block';
+                        document.getElementById('disconnectNeo4jBtn').style.display = 'none';
+                    }
+                    
+                    // Update Claude API status
+                    // Claude API is always considered connected if we have an API key
+                    document.getElementById('claudeStatus').className = 'badge badge-connected';
+                    document.getElementById('claudeStatus').textContent = 'Connected';
+                    document.getElementById('connectClaudeBtn').style.display = 'none';
+                    document.getElementById('disconnectClaudeBtn').style.display = 'inline-block';
+                    
+                    // Update Calendar status
+                    if (data.success && data.status && data.status.calendar && data.status.calendar.connected) {
+                        document.getElementById('calendarStatus').className = 'badge badge-connected';
+                        document.getElementById('calendarStatus').textContent = 'Connected';
+                        document.getElementById('connectCalendarBtn').style.display = 'none';
+                        document.getElementById('disconnectCalendarBtn').style.display = 'inline-block';
+                    } else {
+                        document.getElementById('calendarStatus').className = 'badge badge-disconnected';
+                        document.getElementById('calendarStatus').textContent = 'Disconnected';
+                        document.getElementById('connectCalendarBtn').style.display = 'inline-block';
+                        document.getElementById('disconnectCalendarBtn').style.display = 'none';
+                    }
+                })
+                .catch(error => {
+                    console.error('Error fetching integration status:', error);
+                });
+        }
+        
+        // Initialize
+        fetchIntegrationStatus();
+    });
+</script>
+{% endblock %}

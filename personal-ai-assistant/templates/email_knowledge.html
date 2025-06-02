@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Email Knowledge | AI Chief of Staff</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f8f9fa;
+            color: #212529;
+        }
+        .sidebar {
+            background-color: #fff;
+            height: 100vh;
+            position: sticky;
+            top: 0;
+            padding-top: 20px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        .main-content {
+            padding: 20px;
+        }
+        .nav-link {
+            color: #495057;
+            border-radius: 0;
+            padding: 10px 15px;
+        }
+        .nav-link:hover {
+            background-color: #f8f9fa;
+        }
+        .nav-link.active {
+            color: #4a6fdc;
+            background-color: #e9ecef;
+            font-weight: 500;
+        }
+        .card {
+            margin-bottom: 20px;
+            border: none;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        .card-header {
+            background-color: #fff;
+            border-bottom: 1px solid #e9ecef;
+            font-weight: 600;
+        }
+        .knowledge-item {
+            padding: 15px;
+            border-bottom: 1px solid #e9ecef;
+        }
+        .knowledge-item:last-child {
+            border-bottom: none;
+        }
+        .badge {
+            font-weight: 500;
+            padding: 5px 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid">
+        <div class="row">
+            <!-- Sidebar -->
+            <div class="col-md-2 sidebar d-none d-md-block">
+                <div class="text-center mb-4">
+                    <h4>AI Chief of Staff</h4>
+                </div>
+                <ul class="nav flex-column">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/dashboard">
+                            <i class="bi bi-speedometer2 me-2"></i> Dashboard
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/insights">
+                            <i class="bi bi-lightbulb me-2"></i> Insights
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" href="/email-knowledge">
+                            <i class="bi bi-envelope me-2"></i> Email Knowledge
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/knowledge">
+                            <i class="bi bi-journal-text me-2"></i> Knowledge Base
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/tasks">
+                            <i class="bi bi-check2-square me-2"></i> Tasks
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/settings">
+                            <i class="bi bi-gear me-2"></i> Settings
+                        </a>
+                    </li>
+                </ul>
+            </div>
+            
+            <!-- Main Content -->
+            <div class="col-md-10 main-content">
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <h1>Email Knowledge</h1>
+                    <button id="refreshData" class="btn btn-primary">
+                        <i class="bi bi-arrow-repeat me-2"></i> Refresh Data
+                    </button>
+                </div>
+                
+                <div class="alert alert-info" role="alert">
+                    <i class="bi bi-info-circle-fill me-2"></i>
+                    This page shows knowledge extracted from your email communications using the Gmail API.
+                </div>
+                
+                <!-- Email Knowledge Cards -->
+                <div class="row">
+                    <!-- People Card -->
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <h5 class="mb-0">Key People</h5>
+                                <span class="badge bg-primary" id="peopleCount">0</span>
+                            </div>
+                            <div class="card-body p-0">
+                                <div id="peopleList" class="list-group list-group-flush">
+                                    <!-- People will be loaded here -->
+                                    <div class="text-center py-4">
+                                        <div class="spinner-border text-primary" role="status">
+                                            <span class="visually-hidden">Loading...</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Projects Card -->
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <h5 class="mb-0">Active Projects</h5>
+                                <span class="badge bg-success" id="projectsCount">0</span>
+                            </div>
+                            <div class="card-body p-0">
+                                <div id="projectsList" class="list-group list-group-flush">
+                                    <!-- Projects will be loaded here -->
+                                    <div class="text-center py-4">
+                                        <div class="spinner-border text-success" role="status">
+                                            <span class="visually-hidden">Loading...</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Recent Email Insights -->
+                <div class="card mt-4">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">Recent Email Insights</h5>
+                        <span class="badge bg-info" id="insightsCount">0</span>
+                    </div>
+                    <div class="card-body p-0">
+                        <div id="insightsList" class="list-group list-group-flush">
+                            <!-- Insights will be loaded here -->
+                            <div class="text-center py-4">
+                                <div class="spinner-border text-info" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Function to load people data
+        function loadPeopleData() {
+            fetch('/api/people')
+                .then(response => response.json())
+                .then(data => {
+                    const peopleList = document.getElementById('peopleList');
+                    const peopleCount = document.getElementById('peopleCount');
+                    
+                    if (data.success && data.people && data.people.length > 0) {
+                        peopleCount.textContent = data.people.length;
+                        
+                        // Clear loading spinner
+                        peopleList.innerHTML = '';
+                        
+                        // Add people items
+                        data.people.forEach(person => {
+                            const personItem = document.createElement('div');
+                            personItem.className = 'list-group-item d-flex justify-content-between align-items-center';
+                            
+                            const personInfo = document.createElement('div');
+                            personInfo.innerHTML = `
+                                <h6 class="mb-0">${person.name}</h6>
+                                <small class="text-muted">${person.email}</small>
+                            `;
+                            
+                            const emailCount = document.createElement('span');
+                            emailCount.className = 'badge bg-light text-dark';
+                            emailCount.textContent = `${person.emailCount} emails`;
+                            
+                            personItem.appendChild(personInfo);
+                            personItem.appendChild(emailCount);
+                            peopleList.appendChild(personItem);
+                        });
+                    } else {
+                        peopleList.innerHTML = '<div class="text-center py-4">No people data available</div>';
+                        peopleCount.textContent = '0';
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading people data:', error);
+                    document.getElementById('peopleList').innerHTML = 
+                        '<div class="text-center py-4">Error loading people data</div>';
+                });
+        }
+        
+        // Function to load projects data
+        function loadProjectsData() {
+            fetch('/api/insights')
+                .then(response => response.json())
+                .then(data => {
+                    const projectsList = document.getElementById('projectsList');
+                    const projectsCount = document.getElementById('projectsCount');
+                    
+                    if (data.success && data.projects && data.projects.length > 0) {
+                        projectsCount.textContent = data.projects.length;
+                        
+                        // Clear loading spinner
+                        projectsList.innerHTML = '';
+                        
+                        // Add project items
+                        data.projects.forEach(project => {
+                            const projectItem = document.createElement('div');
+                            projectItem.className = 'list-group-item';
+                            
+                            projectItem.innerHTML = `
+                                <h6 class="mb-1">${project.name}</h6>
+                                <p class="mb-1 small">${project.description || 'No description'}</p>
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <small class="text-muted">Last activity: ${new Date(project.lastActivity).toLocaleDateString()}</small>
+                                    <span class="badge bg-light text-dark">${project.emailCount} emails</span>
+                                </div>
+                            `;
+                            
+                            projectsList.appendChild(projectItem);
+                        });
+                    } else {
+                        projectsList.innerHTML = '<div class="text-center py-4">No projects data available</div>';
+                        projectsCount.textContent = '0';
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading projects data:', error);
+                    document.getElementById('projectsList').innerHTML = 
+                        '<div class="text-center py-4">Error loading projects data</div>';
+                });
+        }
+        
+        // Function to load insights data
+        function loadInsightsData() {
+            fetch('/api/insights')
+                .then(response => response.json())
+                .then(data => {
+                    const insightsList = document.getElementById('insightsList');
+                    const insightsCount = document.getElementById('insightsCount');
+                    
+                    if (data.success && data.generatedInsights && data.generatedInsights.length > 0) {
+                        insightsCount.textContent = data.generatedInsights.length;
+                        
+                        // Clear loading spinner
+                        insightsList.innerHTML = '';
+                        
+                        // Add insight items
+                        data.generatedInsights.forEach(insight => {
+                            const insightItem = document.createElement('div');
+                            insightItem.className = 'list-group-item';
+                            
+                            // Determine badge color based on insight type
+                            let badgeClass = 'bg-secondary';
+                            if (insight.type === 'action') {
+                                badgeClass = 'bg-warning';
+                            } else if (insight.type === 'trend') {
+                                badgeClass = 'bg-info';
+                            } else if (insight.type === 'reminder') {
+                                badgeClass = 'bg-danger';
+                            }
+                            
+                            insightItem.innerHTML = `
+                                <div class="d-flex justify-content-between align-items-start mb-2">
+                                    <span class="badge ${badgeClass}">${insight.type}</span>
+                                    <small class="text-muted">${new Date(insight.date).toLocaleDateString()}</small>
+                                </div>
+                                <p class="mb-1">${insight.content}</p>
+                                <small class="text-muted">Source: ${insight.source}</small>
+                            `;
+                            
+                            insightsList.appendChild(insightItem);
+                        });
+                    } else {
+                        insightsList.innerHTML = '<div class="text-center py-4">No insights data available</div>';
+                        insightsCount.textContent = '0';
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading insights data:', error);
+                    document.getElementById('insightsList').innerHTML = 
+                        '<div class="text-center py-4">Error loading insights data</div>';
+                });
+        }
+        
+        // Load all data when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            loadPeopleData();
+            loadProjectsData();
+            loadInsightsData();
+            
+            // Add refresh button event listener
+            document.getElementById('refreshData').addEventListener('click', function() {
+                this.disabled = true;
+                this.innerHTML = '<i class="bi bi-arrow-repeat me-2"></i> Refreshing...';
+                
+                // Call force refresh API
+                fetch('/api/force-refresh', {
+                    method: 'POST',
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        // Start polling for status
+                        checkSyncStatus();
+                    } else {
+                        alert('Error starting refresh: ' + data.error);
+                        this.disabled = false;
+                        this.innerHTML = '<i class="bi bi-arrow-repeat me-2"></i> Refresh Data';
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('An error occurred while starting the refresh');
+                    this.disabled = false;
+                    this.innerHTML = '<i class="bi bi-arrow-repeat me-2"></i> Refresh Data';
+                });
+            });
+        });
+        
+        // Function to check sync status
+        function checkSyncStatus() {
+            fetch('/api/sync-status')
+                .then(response => response.json())
+                .then(data => {
+                    const refreshBtn = document.getElementById('refreshData');
+                    
+                    if (data.is_syncing) {
+                        refreshBtn.disabled = true;
+                        refreshBtn.innerHTML = `<i class="bi bi-arrow-repeat me-2"></i> Refreshing (${data.progress}%)`;
+                        
+                        // Check again in 2 seconds
+                        setTimeout(checkSyncStatus, 2000);
+                    } else {
+                        refreshBtn.disabled = false;
+                        refreshBtn.innerHTML = '<i class="bi bi-arrow-repeat me-2"></i> Refresh Data';
+                        
+                        // Reload the data if sync is complete
+                        if (data.progress === 100) {
+                            loadPeopleData();
+                            loadProjectsData();
+                            loadInsightsData();
+                        }
+                    }
+                })
+                .catch(error => {
+                    console.error('Error checking sync status:', error);
+                    document.getElementById('refreshData').disabled = false;
+                    document.getElementById('refreshData').innerHTML = '<i class="bi bi-arrow-repeat me-2"></i> Refresh Data';
+                });
+        }
+    </script>
+</body>
+</html>

@@ -24,12 +24,13 @@ class EmailIntelligenceService:
         self.db = db
         self.email_intelligence = EmailIntelligence(claude_client)
     
-    def run_business_intelligence_sync(self, user_email: str, days_back: int = 30) -> Dict[str, Any]:
+    def run_business_intelligence_sync(self, user_email: str, token_data: Dict[str, Any], days_back: int = 30) -> Dict[str, Any]:
         """
         Run the business intelligence sync to analyze emails from the last N days.
         
         Args:
             user_email: The email of the user
+            token_data: Full OAuth token data including access_token, refresh_token, etc.
             days_back: Number of days back to analyze
             
         Returns:
@@ -39,7 +40,7 @@ class EmailIntelligenceService:
         
         try:
             # Get analysis from Claude
-            analysis = self.email_intelligence.analyze_recent_emails(user_email, days_back)
+            analysis = self.email_intelligence.analyze_recent_emails(user_email, token_data, days_back)
             
             # Save to database
             email_insight = EmailInsight(

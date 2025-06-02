@@ -1,0 +1,722 @@
+{% extends "layout.html" %}
+
+{% block title %}Knowledge | Chief of Staff AI{% endblock %}
+
+{% block additional_styles %}
+<style>
+    .knowledge-container {
+        display: flex;
+        gap: 1.5rem;
+    }
+    .knowledge-sidebar {
+        width: 280px;
+        flex-shrink: 0;
+    }
+    .knowledge-main {
+        flex-grow: 1;
+    }
+    .knowledge-card {
+        background-color: #fff;
+        border-radius: 10px;
+        padding: 1.5rem;
+        margin-bottom: 1.5rem;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    .knowledge-stats {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+    }
+    .stat-card {
+        background-color: #f8f9fa;
+        border-radius: 10px;
+        padding: 1rem;
+        text-align: center;
+    }
+    .stat-value {
+        font-size: 2rem;
+        font-weight: 600;
+        color: #4a6fdc;
+        margin-bottom: 0.5rem;
+    }
+    .stat-label {
+        font-size: 0.9rem;
+        color: #6c757d;
+    }
+    .knowledge-nav {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+    }
+    .knowledge-nav-item {
+        margin-bottom: 0.5rem;
+    }
+    .knowledge-nav-link {
+        display: flex;
+        align-items: center;
+        padding: 0.75rem 1rem;
+        border-radius: 8px;
+        text-decoration: none;
+        color: #212529;
+        transition: all 0.2s;
+    }
+    .knowledge-nav-link:hover {
+        background-color: #f8f9fa;
+    }
+    .knowledge-nav-link.active {
+        background-color: #e9ecef;
+        font-weight: 500;
+    }
+    .knowledge-nav-link i {
+        margin-right: 0.75rem;
+        font-size: 1.1rem;
+        color: #4a6fdc;
+    }
+    .entity-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+    }
+    .entity-item {
+        padding: 1rem;
+        border-bottom: 1px solid #dee2e6;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+    }
+    .entity-item:last-child {
+        border-bottom: none;
+    }
+    .entity-info {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+    }
+    .entity-icon {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        background-color: #e9ecef;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #4a6fdc;
+        font-size: 1.2rem;
+    }
+    .entity-name {
+        font-weight: 500;
+        margin: 0;
+    }
+    .entity-type {
+        font-size: 0.85rem;
+        color: #6c757d;
+    }
+    .entity-actions {
+        display: flex;
+        gap: 0.5rem;
+    }
+    .search-box {
+        position: relative;
+        margin-bottom: 1.5rem;
+    }
+    .search-box input {
+        width: 100%;
+        padding: 0.75rem 1rem 0.75rem 2.5rem;
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+    }
+    .search-box i {
+        position: absolute;
+        left: 1rem;
+        top: 50%;
+        transform: translateY(-50%);
+        color: #6c757d;
+    }
+    .graph-container {
+        background-color: #f8f9fa;
+        border-radius: 10px;
+        height: 400px;
+        position: relative;
+    }
+    .graph-placeholder {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        text-align: center;
+        color: #6c757d;
+    }
+    .upload-area {
+        border: 2px dashed #dee2e6;
+        border-radius: 10px;
+        padding: 2rem;
+        text-align: center;
+        margin-bottom: 1.5rem;
+        transition: all 0.2s;
+    }
+    .upload-area:hover {
+        border-color: #4a6fdc;
+    }
+    .upload-icon {
+        font-size: 2.5rem;
+        color: #6c757d;
+        margin-bottom: 1rem;
+    }
+    .file-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+    }
+    .file-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0.75rem;
+        border-bottom: 1px solid #dee2e6;
+    }
+    .file-item:last-child {
+        border-bottom: none;
+    }
+    .file-info {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+    }
+    .file-icon {
+        font-size: 1.5rem;
+        color: #4a6fdc;
+    }
+    .file-name {
+        font-weight: 500;
+        margin: 0;
+    }
+    .file-meta {
+        font-size: 0.85rem;
+        color: #6c757d;
+    }
+    .file-actions {
+        display: flex;
+        gap: 0.5rem;
+    }
+    .tab-content {
+        display: none;
+    }
+    .tab-content.active {
+        display: block;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="content-container">
+    <div class="header">
+        <h1>Knowledge</h1>
+        <p class="mb-0">Explore and manage your knowledge graph and documents</p>
+    </div>
+    
+    <div class="knowledge-stats">
+        <div class="stat-card">
+            <div class="stat-value" id="entityCount">0</div>
+            <div class="stat-label">Entities</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" id="relationshipCount">0</div>
+            <div class="stat-label">Relationships</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" id="documentCount">0</div>
+            <div class="stat-label">Documents</div>
+        </div>
+    </div>
+    
+    <div class="knowledge-container">
+        <div class="knowledge-sidebar">
+            <div class="knowledge-card">
+                <h4>Knowledge Base</h4>
+                <ul class="knowledge-nav">
+                    <li class="knowledge-nav-item">
+                        <a href="#" class="knowledge-nav-link active" data-tab="graph">
+                            <i class="bi bi-diagram-3"></i> Knowledge Graph
+                        </a>
+                    </li>
+                    <li class="knowledge-nav-item">
+                        <a href="#" class="knowledge-nav-link" data-tab="entities">
+                            <i class="bi bi-person-badge"></i> Entities
+                        </a>
+                    </li>
+                    <li class="knowledge-nav-item">
+                        <a href="#" class="knowledge-nav-link" data-tab="documents">
+                            <i class="bi bi-file-earmark-text"></i> Documents
+                        </a>
+                    </li>
+                    <li class="knowledge-nav-item">
+                        <a href="#" class="knowledge-nav-link" data-tab="upload">
+                            <i class="bi bi-cloud-upload"></i> Upload Knowledge
+                        </a>
+                    </li>
+                    <li class="knowledge-nav-item">
+                        <a href="#" class="knowledge-nav-link" data-tab="settings">
+                            <i class="bi bi-gear"></i> Knowledge Settings
+                        </a>
+                    </li>
+                </ul>
+            </div>
+            
+            <div class="knowledge-card">
+                <h4>Connected Sources</h4>
+                <div class="d-flex align-items-center justify-content-between mb-3">
+                    <div>
+                        <i class="bi bi-envelope text-primary"></i>
+                        <span class="ms-2">Gmail</span>
+                    </div>
+                    <span class="badge bg-success">Connected</span>
+                </div>
+                <div class="d-flex align-items-center justify-content-between mb-3">
+                    <div>
+                        <i class="bi bi-calendar3 text-primary"></i>
+                        <span class="ms-2">Google Calendar</span>
+                    </div>
+                    <span class="badge bg-secondary">Not Connected</span>
+                </div>
+                <div class="d-flex align-items-center justify-content-between">
+                    <div>
+                        <i class="bi bi-file-earmark text-primary"></i>
+                        <span class="ms-2">Google Drive</span>
+                    </div>
+                    <span class="badge bg-secondary">Not Connected</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="knowledge-main">
+            <!-- Graph Tab -->
+            <div class="tab-content active" id="graph-tab">
+                <div class="knowledge-card">
+                    <h3>Knowledge Graph</h3>
+                    <p>Visual representation of your knowledge network</p>
+                    
+                    <div class="search-box">
+                        <i class="bi bi-search"></i>
+                        <input type="text" placeholder="Search entities and relationships..." id="graphSearch">
+                    </div>
+                    
+                    <div class="graph-container">
+                        <div class="graph-placeholder" id="graphPlaceholder">
+                            <i class="bi bi-diagram-3 fs-1 mb-3"></i>
+                            <h4>Knowledge Graph Visualization</h4>
+                            <p>Your knowledge graph will be displayed here</p>
+                        </div>
+                        <div id="graphVisualization"></div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Entities Tab -->
+            <div class="tab-content" id="entities-tab">
+                <div class="knowledge-card">
+                    <h3>Entities</h3>
+                    <p>People, organizations, projects, and concepts in your knowledge base</p>
+                    
+                    <div class="search-box">
+                        <i class="bi bi-search"></i>
+                        <input type="text" placeholder="Search entities..." id="entitySearch">
+                    </div>
+                    
+                    <ul class="entity-list" id="entityList">
+                        <!-- Entities will be loaded here -->
+                    </ul>
+                </div>
+            </div>
+            
+            <!-- Documents Tab -->
+            <div class="tab-content" id="documents-tab">
+                <div class="knowledge-card">
+                    <h3>Documents</h3>
+                    <p>Files and documents in your knowledge base</p>
+                    
+                    <div class="search-box">
+                        <i class="bi bi-search"></i>
+                        <input type="text" placeholder="Search documents..." id="documentSearch">
+                    </div>
+                    
+                    <ul class="file-list" id="documentList">
+                        <!-- Documents will be loaded here -->
+                    </ul>
+                </div>
+            </div>
+            
+            <!-- Upload Tab -->
+            <div class="tab-content" id="upload-tab">
+                <div class="knowledge-card">
+                    <h3>Upload Knowledge</h3>
+                    <p>Add documents to your knowledge base</p>
+                    
+                    <div class="upload-area" id="uploadArea">
+                        <i class="bi bi-cloud-upload upload-icon"></i>
+                        <h4>Drag & Drop Files Here</h4>
+                        <p>or</p>
+                        <button class="btn btn-primary" id="browseFilesBtn">Browse Files</button>
+                        <input type="file" id="fileInput" style="display: none;" multiple>
+                    </div>
+                    
+                    <div id="uploadProgress" style="display: none;">
+                        <h4>Uploading Files</h4>
+                        <div class="progress mb-3">
+                            <div class="progress-bar bg-primary" role="progressbar" style="width: 0%"></div>
+                        </div>
+                        <p id="uploadStatus">Preparing files...</p>
+                    </div>
+                    
+                    <h4>Recently Uploaded</h4>
+                    <ul class="file-list" id="recentUploads">
+                        <!-- Recently uploaded files will be shown here -->
+                    </ul>
+                </div>
+            </div>
+            
+            <!-- Settings Tab -->
+            <div class="tab-content" id="settings-tab">
+                <div class="knowledge-card">
+                    <h3>Knowledge Settings</h3>
+                    <p>Configure your knowledge graph and extraction settings</p>
+                    
+                    <form id="knowledgeSettingsForm">
+                        <div class="mb-3">
+                            <label class="form-label">Entity Extraction</label>
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="autoExtractEntities" checked>
+                                <label class="form-check-label" for="autoExtractEntities">
+                                    Automatically extract entities from emails and documents
+                                </label>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">Entity Types to Extract</label>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="extractPeople" checked>
+                                <label class="form-check-label" for="extractPeople">People</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="extractOrganizations" checked>
+                                <label class="form-check-label" for="extractOrganizations">Organizations</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="extractProjects" checked>
+                                <label class="form-check-label" for="extractProjects">Projects</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="extractConcepts" checked>
+                                <label class="form-check-label" for="extractConcepts">Concepts</label>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">Knowledge Graph Database</label>
+                            <div class="input-group">
+                                <input type="text" class="form-control" id="neo4jUri" placeholder="Neo4j URI" value="bolt://localhost:7687">
+                            </div>
+                            <div class="form-text">The URI for your Neo4j database</div>
+                        </div>
+                        
+                        <button type="submit" class="btn btn-primary">Save Settings</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Entity Item Template -->
+<template id="entityItemTemplate">
+    <li class="entity-item">
+        <div class="entity-info">
+            <div class="entity-icon">
+                <i class="bi bi-person"></i>
+            </div>
+            <div>
+                <h5 class="entity-name"></h5>
+                <div class="entity-type"></div>
+            </div>
+        </div>
+        <div class="entity-actions">
+            <button class="btn btn-sm btn-outline-primary view-entity" title="View Entity">
+                <i class="bi bi-eye"></i>
+            </button>
+            <button class="btn btn-sm btn-outline-secondary edit-entity" title="Edit Entity">
+                <i class="bi bi-pencil"></i>
+            </button>
+        </div>
+    </li>
+</template>
+
+<!-- Document Item Template -->
+<template id="documentItemTemplate">
+    <li class="file-item">
+        <div class="file-info">
+            <i class="bi bi-file-earmark-text file-icon"></i>
+            <div>
+                <h5 class="file-name"></h5>
+                <div class="file-meta"></div>
+            </div>
+        </div>
+        <div class="file-actions">
+            <button class="btn btn-sm btn-outline-primary view-document" title="View Document">
+                <i class="bi bi-eye"></i>
+            </button>
+            <button class="btn btn-sm btn-outline-danger delete-document" title="Delete Document">
+                <i class="bi bi-trash"></i>
+            </button>
+        </div>
+    </li>
+</template>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Tab switching
+        const navLinks = document.querySelectorAll('.knowledge-nav-link');
+        const tabContents = document.querySelectorAll('.tab-content');
+        
+        navLinks.forEach(link => {
+            link.addEventListener('click', function(e) {
+                e.preventDefault();
+                
+                // Update active nav link
+                navLinks.forEach(l => l.classList.remove('active'));
+                this.classList.add('active');
+                
+                // Show corresponding tab
+                const tabId = this.dataset.tab + '-tab';
+                tabContents.forEach(tab => {
+                    tab.classList.remove('active');
+                    if (tab.id === tabId) {
+                        tab.classList.add('active');
+                    }
+                });
+            });
+        });
+        
+        // File upload handling
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+        const browseFilesBtn = document.getElementById('browseFilesBtn');
+        const uploadProgress = document.getElementById('uploadProgress');
+        const progressBar = document.querySelector('.progress-bar');
+        const uploadStatus = document.getElementById('uploadStatus');
+        
+        browseFilesBtn.addEventListener('click', function() {
+            fileInput.click();
+        });
+        
+        uploadArea.addEventListener('dragover', function(e) {
+            e.preventDefault();
+            uploadArea.style.borderColor = '#4a6fdc';
+            uploadArea.style.backgroundColor = '#f8f9fa';
+        });
+        
+        uploadArea.addEventListener('dragleave', function() {
+            uploadArea.style.borderColor = '#dee2e6';
+            uploadArea.style.backgroundColor = '';
+        });
+        
+        uploadArea.addEventListener('drop', function(e) {
+            e.preventDefault();
+            uploadArea.style.borderColor = '#dee2e6';
+            uploadArea.style.backgroundColor = '';
+            
+            const files = e.dataTransfer.files;
+            handleFiles(files);
+        });
+        
+        fileInput.addEventListener('change', function() {
+            handleFiles(this.files);
+        });
+        
+        function handleFiles(files) {
+            if (files.length === 0) return;
+            
+            uploadArea.style.display = 'none';
+            uploadProgress.style.display = 'block';
+            
+            const formData = new FormData();
+            for (let i = 0; i < files.length; i++) {
+                formData.append('files', files[i]);
+            }
+            
+            // Simulate upload progress
+            let progress = 0;
+            const interval = setInterval(function() {
+                progress += 5;
+                progressBar.style.width = progress + '%';
+                uploadStatus.textContent = `Processing files... ${progress}%`;
+                
+                if (progress >= 100) {
+                    clearInterval(interval);
+                    uploadStatus.textContent = 'Upload complete! Processing files...';
+                    
+                    // Simulate processing delay
+                    setTimeout(function() {
+                        uploadProgress.style.display = 'none';
+                        uploadArea.style.display = 'block';
+                        progressBar.style.width = '0%';
+                        
+                        // Add uploaded files to recent uploads
+                        const recentUploads = document.getElementById('recentUploads');
+                        for (let i = 0; i < files.length; i++) {
+                            const file = files[i];
+                            const template = document.getElementById('documentItemTemplate');
+                            const fileItem = document.importNode(template.content, true).querySelector('.file-item');
+                            
+                            fileItem.querySelector('.file-name').textContent = file.name;
+                            fileItem.querySelector('.file-meta').textContent = `${formatFileSize(file.size)} • Just now`;
+                            
+                            recentUploads.prepend(fileItem);
+                        }
+                        
+                        // Update document count
+                        const documentCount = document.getElementById('documentCount');
+                        documentCount.textContent = parseInt(documentCount.textContent) + files.length;
+                    }, 1500);
+                }
+            }, 200);
+            
+            // In a real implementation, you would send the formData to the server
+            // fetch('/api/knowledge/upload', {
+            //     method: 'POST',
+            //     body: formData
+            // })
+            // .then(response => response.json())
+            // .then(data => {
+            //     // Handle successful upload
+            // })
+            // .catch(error => {
+            //     console.error('Error:', error);
+            // });
+        }
+        
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+        
+        // Fetch knowledge graph stats
+        fetch('/api/knowledge-graph/stats')
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('entityCount').textContent = data.entities || 0;
+                document.getElementById('relationshipCount').textContent = data.relationships || 0;
+                document.getElementById('documentCount').textContent = data.documents || 0;
+                
+                // If we have entities, load them
+                if (data.entities > 0) {
+                    loadEntities();
+                }
+                
+                // If we have a graph, initialize visualization
+                if (data.entities > 0 && data.relationships > 0) {
+                    document.getElementById('graphPlaceholder').style.display = 'none';
+                    initializeGraphVisualization();
+                }
+            })
+            .catch(error => {
+                console.error('Error fetching knowledge graph stats:', error);
+            });
+        
+        // Load entities
+        function loadEntities() {
+            fetch('/api/knowledge-graph/entities')
+                .then(response => response.json())
+                .then(data => {
+                    const entityList = document.getElementById('entityList');
+                    entityList.innerHTML = '';
+                    
+                    if (data.length === 0) {
+                        entityList.innerHTML = '<li class="p-3 text-center text-muted">No entities found</li>';
+                        return;
+                    }
+                    
+                    data.forEach(entity => {
+                        const template = document.getElementById('entityItemTemplate');
+                        const entityItem = document.importNode(template.content, true).querySelector('.entity-item');
+                        
+                        entityItem.querySelector('.entity-name').textContent = entity.name;
+                        entityItem.querySelector('.entity-type').textContent = entity.type;
+                        
+                        // Set appropriate icon based on entity type
+                        const iconElement = entityItem.querySelector('.entity-icon i');
+                        switch (entity.type.toLowerCase()) {
+                            case 'person':
+                                iconElement.className = 'bi bi-person';
+                                break;
+                            case 'organization':
+                                iconElement.className = 'bi bi-building';
+                                break;
+                            case 'project':
+                                iconElement.className = 'bi bi-kanban';
+                                break;
+                            case 'concept':
+                                iconElement.className = 'bi bi-lightbulb';
+                                break;
+                            default:
+                                iconElement.className = 'bi bi-tag';
+                        }
+                        
+                        entityList.appendChild(entityItem);
+                    });
+                })
+                .catch(error => {
+                    console.error('Error fetching entities:', error);
+                });
+        }
+        
+        // Initialize graph visualization (placeholder)
+        function initializeGraphVisualization() {
+            // This would be implemented with a library like D3.js or vis.js
+            console.log('Initializing graph visualization');
+            // For now, we'll just hide the placeholder
+            document.getElementById('graphPlaceholder').style.display = 'none';
+        }
+        
+        // Knowledge settings form
+        const knowledgeSettingsForm = document.getElementById('knowledgeSettingsForm');
+        knowledgeSettingsForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const settings = {
+                autoExtractEntities: document.getElementById('autoExtractEntities').checked,
+                entityTypes: {
+                    people: document.getElementById('extractPeople').checked,
+                    organizations: document.getElementById('extractOrganizations').checked,
+                    projects: document.getElementById('extractProjects').checked,
+                    concepts: document.getElementById('extractConcepts').checked
+                },
+                neo4jUri: document.getElementById('neo4jUri').value
+            };
+            
+            // In a real implementation, you would send the settings to the server
+            // fetch('/api/knowledge/settings', {
+            //     method: 'POST',
+            //     headers: {
+            //         'Content-Type': 'application/json',
+            //     },
+            //     body: JSON.stringify(settings),
+            // })
+            // .then(response => response.json())
+            // .then(data => {
+            //     // Handle successful update
+            // })
+            // .catch(error => {
+            //     console.error('Error:', error);
+            // });
+            
+            alert('Settings saved successfully!');
+        });
+    });
+</script>
+{% endblock %}

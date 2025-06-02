@@ -144,7 +144,10 @@
                                             <form action="/sync-emails" method="post" style="display:inline;">
                                                 <button type="submit" class="btn btn-outline-primary btn-sm">Sync Now</button>
                                             </form>
-                                            <a href="/disconnect-gmail" class="btn btn-outline-danger btn-sm">Disconnect</a>
+                                            <button id="forceRefreshBtn" class="btn btn-outline-success btn-sm ms-2">
+                                                <i class="bi bi-arrow-repeat"></i> Force Refresh Data
+                                            </button>
+                                            <a href="/disconnect-gmail" class="btn btn-outline-danger btn-sm ms-2">Disconnect</a>
                                         </div>
                                     </div>
                                 {% else %}
@@ -378,6 +381,32 @@
             
             <button id="savePreferences" class="btn btn-primary">Save Preferences</button>
         </div>
+        
+        <!-- Database Management Section -->
+        <div class="card mt-5 mb-4">
+            <div class="card-header bg-light">
+                <h3 class="mb-0">Database Management</h3>
+                <p class="text-muted small mb-0">Reset your application data</p>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-danger">
+                    <h5><i class="bi bi-exclamation-triangle-fill"></i> Warning</h5>
+                    <p>Resetting the database will permanently delete all your data including:</p>
+                    <ul>
+                        <li>All projects and goals</li>
+                        <li>All knowledge files</li>
+                        <li>All email insights and analysis</li>
+                        <li>All tasks and notes</li>
+                        <li>All people and relationship data</li>
+                    </ul>
+                    <p class="mb-0">This action cannot be undone.</p>
+                </div>
+                
+                <button id="resetDbBtn" class="btn btn-danger">
+                    <i class="bi bi-trash"></i> Reset Database
+                </button>
+            </div>
+        </div>
     </div>
 
     <!-- Project Modal -->
@@ -498,6 +527,72 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
     <script>
+        // Add event listener for force refresh button
+        document.getElementById('forceRefreshBtn').addEventListener('click', function() {
+            if (confirm('Are you sure you want to force refresh all data from Gmail? This may take a while.')) {
+                this.disabled = true;
+                this.innerHTML = '<i class="bi bi-arrow-repeat"></i> Refreshing...';
+                
+                fetch('/api/force-refresh', {
+                    method: 'POST',
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        // Start polling for status
+                        checkSyncStatus();
+                    } else {
+                        alert('Error starting refresh: ' + data.error);
+                        this.disabled = false;
+                        this.innerHTML = '<i class="bi bi-arrow-repeat"></i> Force Refresh Data';
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('An error occurred while starting the refresh');
+                    this.disabled = false;
+                    this.innerHTML = '<i class="bi bi-arrow-repeat"></i> Force Refresh Data';
+                });
+            }
+        });
+        
+        // Function to check sync status
+        function checkSyncStatus() {
+            fetch('/api/sync-status')
+                .then(response => response.json())
+                .then(data => {
+                    const refreshBtn = document.getElementById('forceRefreshBtn');
+                    
+                    if (data.is_syncing) {
+                        refreshBtn.disabled = true;
+                        refreshBtn.innerHTML = `<i class="bi bi-arrow-repeat"></i> Refreshing (${data.progress}%)`;
+                        
+                        // Update progress bar if it exists
+                        const progressBar = document.querySelector('.progress-bar');
+                        if (progressBar) {
+                            progressBar.style.width = `${data.progress}%`;
+                            progressBar.setAttribute('aria-valuenow', data.progress);
+                        }
+                        
+                        // Check again in 2 seconds
+                        setTimeout(checkSyncStatus, 2000);
+                    } else {
+                        refreshBtn.disabled = false;
+                        refreshBtn.innerHTML = '<i class="bi bi-arrow-repeat"></i> Force Refresh Data';
+                        
+                        // Reload the page to show updated data
+                        if (data.progress === 100) {
+                            window.location.reload();
+                        }
+                    }
+                })
+                .catch(error => {
+                    console.error('Error checking sync status:', error);
+                    document.getElementById('forceRefreshBtn').disabled = false;
+                    document.getElementById('forceRefreshBtn').innerHTML = '<i class="bi bi-arrow-repeat"></i> Force Refresh Data';
+                });
+        }
+        
         document.getElementById('savePreferences').addEventListener('click', function() {
             // Get form values
             const syncFrequency = document.getElementById('syncFrequency').value;
@@ -528,6 +623,44 @@
                 console.error('Error:', error);
                 alert('An error occurred while saving preferences.');
             });
+        });
+        
+        // Database reset button
+        document.getElementById('resetDbBtn').addEventListener('click', function() {
+            if (confirm('WARNING: This will permanently delete ALL your data. This action CANNOT be undone. Are you absolutely sure?')) {
+                if (confirm('FINAL WARNING: All your projects, goals, tasks, and insights will be permanently deleted. Type "RESET" to confirm.')) {
+                    const userInput = prompt('Type "RESET" to confirm database reset:');
+                    if (userInput === 'RESET') {
+                        // Show loading spinner
+                        this.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Resetting...';
+                        this.disabled = true;
+                        
+                        fetch('/api/reset-database', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            }
+                        })
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.success) {
+                                alert('Database has been reset successfully. The application will now reload.');
+                                window.location.href = '/';
+                            } else {
+                                alert('Error resetting database: ' + data.error);
+                                this.innerHTML = '<i class="bi bi-trash"></i> Reset Database';
+                                this.disabled = false;
+                            }
+                        })
+                        .catch(error => {
+                            console.error('Error:', error);
+                            alert('An error occurred while resetting the database.');
+                            this.innerHTML = '<i class="bi bi-trash"></i> Reset Database';
+                            this.disabled = false;
+                        });
+                    }
+                }
+            }
         });
         
         // Check sync status periodically if syncing is in progress

@@ -11,6 +11,8 @@ from datetime import datetime
 from services.intelligence_service import IntelligenceService
 from services.knowledge_integration_service import KnowledgeIntegrationService
 from models.database.tasks import Task
+# Import claude_client from main module
+from main import claude_client
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +43,7 @@ def get_tasks():
     offset = int(request.args.get('offset', 0))
     
     # Initialize services
-    intelligence_service = IntelligenceService(database_url)
+    intelligence_service = IntelligenceService(database_url, claude_client)
     knowledge_integration_service = KnowledgeIntegrationService(intelligence_service.SessionLocal)
     
     # Get tasks
@@ -69,7 +71,7 @@ def create_task():
         return jsonify({'error': 'Task description is required'}), 400
     
     # Create database session
-    intelligence_service = IntelligenceService(database_url)
+    intelligence_service = IntelligenceService(database_url, claude_client)
     session_db = intelligence_service.SessionLocal()
     
     try:
@@ -116,7 +118,7 @@ def get_task(task_id):
         return jsonify({'error': 'User not logged in'}), 401
     
     # Create database session
-    intelligence_service = IntelligenceService(database_url)
+    intelligence_service = IntelligenceService(database_url, claude_client)
     session_db = intelligence_service.SessionLocal()
     
     try:
@@ -151,7 +153,7 @@ def update_task(task_id):
         return jsonify({'error': 'No data provided'}), 400
     
     # Create database session
-    intelligence_service = IntelligenceService(database_url)
+    intelligence_service = IntelligenceService(database_url, claude_client)
     session_db = intelligence_service.SessionLocal()
     
     try:
@@ -215,7 +217,7 @@ def delete_task(task_id):
         return jsonify({'error': 'User not logged in'}), 401
     
     # Create database session
-    intelligence_service = IntelligenceService(database_url)
+    intelligence_service = IntelligenceService(database_url, claude_client)
     session_db = intelligence_service.SessionLocal()
     
     try:

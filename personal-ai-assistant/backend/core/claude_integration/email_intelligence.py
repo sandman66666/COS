@@ -1,5 +1,5 @@
 """
-Email Intelligence Module using Claude for email analysis with data from GmailConnector.
+Email Intelligence Module using Claude for email analysis with data from ImprovedGmailConnector.
 
 This module provides functionality for:
 1. Business Intelligence Sync - Analyzing emails from the last 30 days
@@ -13,7 +13,7 @@ import traceback
 from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional, Tuple
 
-from backend.integrations.gmail.gmail_connector import GmailConnector
+from backend.integrations.gmail.gmail_connector_improved import ImprovedGmailConnector
 import anthropic
 from anthropic.types import ContentBlockDeltaEvent
 import os
@@ -30,16 +30,17 @@ class EmailIntelligence:
         """
         self.claude_client = claude_client
     
-    def analyze_recent_emails(self, user_email: str, access_token: str = None, days_back: int = 30, previous_insights: Dict[str, Any] = None, structured_knowledge: Dict[str, Any] = None) -> Dict[str, Any]:
+    def analyze_recent_emails(self, user_email: str, token_data: Dict[str, Any] = None, days_back: int = 30, previous_insights: Dict[str, Any] = None, structured_knowledge: Dict[str, Any] = None) -> Dict[str, Any]:
         """
         Analyze emails from the last N days to extract business intelligence using multiple targeted prompts.
-        Uses the Gmail API to fetch real emails via GmailConnector.
+        Uses the Gmail API to fetch real emails via ImprovedGmailConnector.
         
         Args:
             user_email: The email of the user whose emails to analyze
-            access_token: OAuth access token for Gmail API
+            token_data: Full OAuth token data including access_token, refresh_token, etc.
             days_back: Number of days back to analyze (default: 30)
             previous_insights: Previously generated insights to build upon (default: None)
+            structured_knowledge: Structured knowledge to consider in analysis (default: None)
             
         Returns:
             Dict containing analysis results with key insights from multiple specialized prompts
@@ -49,12 +50,12 @@ class EmailIntelligence:
         logger.info(f"Performing {analysis_type} analysis")
         
         try:
-            # Validate we have an access token
-            if not access_token:
-                logger.error(f"No access token provided for {user_email}")
+            # Validate we have token data
+            if not token_data or 'access_token' not in token_data:
+                logger.error(f"No token data provided for {user_email}")
                 return {
                     "status": "error",
-                    "message": "No access token provided for Gmail API",
+                    "message": "No token data provided for Gmail API",
                     "key_relationships": [],
                     "active_projects": [],
                     "communication_patterns": {},
@@ -62,12 +63,13 @@ class EmailIntelligence:
                     "important_information": []
                 }
                 
-            # Initialize Gmail connector with the access token
-            gmail = GmailConnector(access_token)
+            # Initialize Gmail connector with the full token data
+            gmail = ImprovedGmailConnector(token_data)
             
             # Test the connection
-            if not gmail.test_connection():
-                logger.error(f"Failed to connect to Gmail API for {user_email}")
+            connection_test = gmail.test_connection()
+            if not connection_test.get('success', False):
+                logger.error(f"Failed to connect to Gmail API for {user_email}: {connection_test.get('error', 'Unknown error')}")
                 return {
                     "status": "error",
                     "message": "Failed to connect to Gmail API",
@@ -80,7 +82,21 @@ class EmailIntelligence:
             
             # Fetch real emails using the Gmail API
             logger.info(f"Fetching emails from Gmail API for {user_email}")
-            email_summaries = gmail.get_recent_emails(days_back=days_back, max_results=50)  # Reduced from 100 to 50
+            result = gmail.get_recent_emails(days_back=days_back, max_results=50)  # Reduced from 100 to 50
+            
+            if not result.get('success', False):
+                logger.error(f"Failed to fetch emails: {result.get('error', 'Unknown error')}")
+                return {
+                    "status": "error",
+                    "message": f"Failed to fetch emails: {result.get('error', 'Unknown error')}",
+                    "key_relationships": [],
+                    "active_projects": [],
+                    "communication_patterns": {},
+                    "action_items": [],
+                    "important_information": []
+                }
+                
+            email_summaries = result.get('emails', [])
             
             if not email_summaries:
                 logger.warning(f"No emails found for {user_email} in the last {days_back} days")
@@ -189,35 +205,50 @@ class EmailIntelligence:
                 if goals:
                     structured_knowledge_text += "\nGoals:\n"
                     for goal in goals:
-                        structured_knowledge_text += f"- {goal.get('title')}: {goal.get('description')}\n"
+                        structured_knowledge_text += f"- {goal.get('name')}: {goal.get('description')}\n"
         
-        return f"""
-        Analyze the following email summaries from {user_email} to identify key relationships.
+        # Construct the full prompt
+        prompt = f"""
+        You are an expert relationship analyst for {user_email}. Your task is to analyze their recent email communications and identify key relationships.
+        
+        For each key relationship, provide:
+        1. Name of the person
+        2. Their email address if available
+        3. Their organization/company if available
+        4. Their role or title if available
+        5. The nature of the relationship (colleague, client, vendor, friend, etc.)
+        6. The apparent importance of this relationship based on frequency and content of communications
+        7. Key topics discussed with this person
+        8. Any action items or follow-ups pending with this person
         
         {previous_relationships_text}
         
         {structured_knowledge_text}
         
-        Email data (showing sender, subject, date, and brief snippet):
+        Here are the recent email communications to analyze:
         {json.dumps(concise_summaries, indent=2)}
         
-        Provide a comprehensive analysis of key relationships in JSON format with the following structure:
+        Provide your analysis in the following JSON format:
         {{
             "key_relationships": [
                 {{
-                    "name": "Person's Name",
-                    "email": "person@example.com",
-                    "role": "Their professional role or relationship",
+                    "name": "Person's full name",
+                    "email": "email@example.com",
+                    "organization": "Company name",
+                    "role": "Their role or title",
+                    "relationship_type": "Type of relationship",
                     "importance": "High/Medium/Low",
-                    "recent_interactions": "Brief summary of recent interactions",
-                    "action_needed": "Any follow-up needed (or null if none)"
+                    "key_topics": ["Topic 1", "Topic 2"],
+                    "pending_actions": ["Action 1", "Action 2"]
                 }}
             ]
         }}
         
-        Include at least 5-10 key relationships if they exist in the data, ordered by importance.
-        If a person appears in both the previous relationships and the new emails, merge the information to create a more complete profile that builds upon the existing knowledge.
+        Only include people who appear to be actual relationships, not automated systems or mailing lists.
+        Focus on quality over quantity - identify the 5-10 most important relationships.
         """
+        
+        return prompt
     
     def _create_projects_prompt(self, user_email: str, email_summaries: List[Dict], previous_insights: Dict[str, Any] = None, structured_knowledge: Dict[str, Any] = None) -> str:
         """Create a prompt for analyzing active projects from emails."""
@@ -228,7 +259,7 @@ class EmailIntelligence:
                 'sender': email.get('sender', 'Unknown'),
                 'subject': email.get('subject', '')[:100],  # Limit subject length
                 'date': email.get('date', ''),
-                'snippet': email.get('body', '')[:200] if 'body' in email else ''  # Use snippet instead of full body
+                'snippet': email.get('body', '')[:300] if 'body' in email else ''  # Use longer snippet for projects
             })
         
         # Include previous projects if available
@@ -236,74 +267,71 @@ class EmailIntelligence:
         if previous_insights and 'active_projects' in previous_insights and previous_insights['active_projects']:
             previous_projects_text = f"""
             IMPORTANT: Here are the active projects identified from previous email analysis. 
-            Build upon and update this information with the new email data, tracking progress and changes in status:
+            Build upon and update this information with the new email data:
             {json.dumps(previous_insights['active_projects'], indent=2)}
             """
         
         # Include structured knowledge about projects if available
         structured_knowledge_text = ""
-        if structured_knowledge:
+        if structured_knowledge and structured_knowledge.get('projects'):
             projects = structured_knowledge.get('projects', [])
-            goals = structured_knowledge.get('goals', [])
-            knowledge_files = structured_knowledge.get('knowledge_files', [])
-            
-            if projects:
-                structured_knowledge_text += "\nIMPORTANT: The user has manually defined the following projects. Use this information as a foundation and update with any new details from emails:\n"
-                for project in projects:
-                    structured_knowledge_text += f"\n- Project: {project.get('name')}\n"
-                    structured_knowledge_text += f"  Description: {project.get('description')}\n"
+            structured_knowledge_text = "IMPORTANT: Consider these user-defined projects when analyzing emails:\n"
+            for project in projects:
+                structured_knowledge_text += f"- {project.get('name')}: {project.get('description')}\n"
+                if project.get('stakeholders'):
+                    structured_knowledge_text += f"  Stakeholders: {', '.join(project.get('stakeholders'))}\n"
+                if project.get('status'):
                     structured_knowledge_text += f"  Status: {project.get('status')}\n"
-                    structured_knowledge_text += f"  Priority: {project.get('priority')}\n"
-                    if project.get('stakeholders'):
-                        structured_knowledge_text += f"  Stakeholders: {', '.join(project.get('stakeholders'))}\n"
-                    if project.get('keywords'):
-                        structured_knowledge_text += f"  Keywords: {', '.join(project.get('keywords'))}\n"
         
-            if goals:
-                structured_knowledge_text += "\nIMPORTANT: Consider these user goals when analyzing projects:\n"
-                for goal in goals:
-                    structured_knowledge_text += f"- {goal.get('title')}: {goal.get('description')}\n"
+        # Construct the full prompt
+        prompt = f"""
+        You are an expert project analyst for {user_email}. Your task is to analyze their recent email communications and identify active projects or initiatives.
         
-        return f"""
-        Analyze the following email summaries from {user_email} to identify active projects and initiatives.
+        For each active project, provide:
+        1. Project name or identifier
+        2. Brief description of the project
+        3. Current status (if discernible)
+        4. Key stakeholders involved
+        5. Recent developments or updates
+        6. Upcoming deadlines or milestones (if mentioned)
+        7. Any blockers or issues mentioned
         
         {previous_projects_text}
         
         {structured_knowledge_text}
         
-        Email data:
+        Here are the recent email communications to analyze:
         {json.dumps(concise_summaries, indent=2)}
         
-        Provide a comprehensive analysis of active projects in JSON format with the following structure:
+        Provide your analysis in the following JSON format:
         {{
             "active_projects": [
                 {{
-                    "name": "Project Name",
-                    "description": "Brief description of the project",
-                    "status": "Current status (e.g., In Progress, Planning, Completed)",
-                    "key_stakeholders": ["Person1", "Person2"],
-                    "priority": "High/Medium/Low",
-                    "next_steps": "Upcoming actions or milestones"
+                    "name": "Project name",
+                    "description": "Brief description",
+                    "status": "In progress/Completed/On hold/etc.",
+                    "stakeholders": ["Person 1", "Person 2"],
+                    "recent_updates": ["Update 1", "Update 2"],
+                    "upcoming_deadlines": ["Deadline 1", "Deadline 2"],
+                    "blockers": ["Blocker 1", "Blocker 2"]
                 }}
             ]
         }}
         
-        Include at least 3-7 active projects if they exist in the data, ordered by priority.
-        If a project appears in both the previous projects and the new emails, merge the information to create a more complete profile, updating status and progress based on the new information.
-        Track how projects evolve over time, noting any changes in status, priority, or stakeholders.
+        Only include projects that appear to be currently active or recently mentioned.
+        Focus on quality over quantity - identify the 3-7 most significant projects.
         """
+        
+        return prompt
     
     def _create_patterns_prompt(self, user_email: str, email_summaries: List[Dict], previous_insights: Dict[str, Any] = None, structured_knowledge: Dict[str, Any] = None) -> str:
         """Create a prompt for analyzing communication patterns from emails."""
-        # Create concise summaries for pattern analysis
-        concise_summaries = []
-        for email in email_summaries[:30]:  # Limit to 30 most recent emails
-            concise_summaries.append({
-                'sender': email.get('sender', 'Unknown'),
-                'date': email.get('date', ''),
-                'subject': email.get('subject', '')[:100],
-                'is_unread': email.get('is_unread', False)
-            })
+        # Extract sender and date information for pattern analysis
+        sender_data = []
+        for email in email_summaries:
+            sender = email.get('sender', 'Unknown')
+            date = email.get('date', '')
+            sender_data.append({'sender': sender, 'date': date})
         
         # Include previous patterns if available
         previous_patterns_text = ""
@@ -314,67 +342,58 @@ class EmailIntelligence:
             {json.dumps(previous_insights['communication_patterns'], indent=2)}
             """
         
-        # Include structured knowledge about relationships and projects if available
-        structured_knowledge_text = ""
-        if structured_knowledge:
-            projects = structured_knowledge.get('projects', [])
-            
-            if projects:
-                structured_knowledge_text += "\nIMPORTANT: Consider these user-defined projects when analyzing communication patterns:\n"
-                for project in projects:
-                    if project.get('stakeholders'):
-                        structured_knowledge_text += f"- Project '{project.get('name')}' involves stakeholders: {', '.join(project.get('stakeholders'))}\n"
+        # Construct the full prompt
+        prompt = f"""
+        You are an expert communication analyst for {user_email}. Your task is to analyze their recent email communications and identify patterns.
         
-        return f"""
-        Analyze the following email summaries from {user_email} to identify communication patterns and preferences.
+        Analyze the following aspects of communication:
+        1. Most frequent contacts
+        2. Time patterns (time of day, day of week)
+        3. Response rates and times
+        4. Communication volume trends
+        5. Common topics or themes
         
         {previous_patterns_text}
         
-        {structured_knowledge_text}
+        Here is the sender and date information from recent emails:
+        {json.dumps(sender_data, indent=2)}
         
-        Email data:
-        {json.dumps(concise_summaries, indent=2)}
-        
-        Provide a comprehensive analysis of communication patterns in JSON format with the following structure:
+        Provide your analysis in the following JSON format:
         {{
             "communication_patterns": {{
-                "most_frequent_contacts": [
-                    {{
-                        "name": "Contact Name",
-                        "email": "contact@example.com",
-                        "frequency": "Number of interactions"
-                    }}
+                "frequent_contacts": [
+                    {{"name": "Contact name", "frequency": "Number or description"}}
                 ],
-                "busiest_times": {{
-                    "days_of_week": ["Monday", "Thursday"],
-                    "times_of_day": ["Morning", "Evening"]
-                }},
-                "response_patterns": {{
-                    "average_response_time": "X hours/days",
-                    "most_responsive_to": ["Person1", "Person2"],
-                    "least_responsive_to": ["Person3", "Person4"]
-                }},
-                "communication_style": {{
-                    "email_length": "Short/Medium/Long",
-                    "formality_level": "Formal/Casual/Mixed",
-                    "common_phrases": ["Phrase1", "Phrase2"]
-                }}
+                "time_patterns": [
+                    {{"pattern": "Description of pattern", "observation": "Details"}}
+                ],
+                "response_patterns": [
+                    {{"pattern": "Description of pattern", "observation": "Details"}}
+                ],
+                "volume_trends": [
+                    {{"trend": "Description of trend", "observation": "Details"}}
+                ],
+                "common_themes": [
+                    {{"theme": "Theme name", "frequency": "Description"}}
+                ]
             }}
         }}
         
-        If there are patterns in both the previous analysis and the new emails, merge the information to create a more comprehensive understanding of communication habits over time.
+        Focus on identifying meaningful patterns rather than listing every detail.
         """
+        
+        return prompt
     
     def _create_actions_prompt(self, user_email: str, email_summaries: List[Dict], previous_insights: Dict[str, Any] = None, structured_knowledge: Dict[str, Any] = None) -> str:
-        """Create a prompt for identifying action items from emails."""
-        # Create concise summaries focusing on actionable content
+        """Create a prompt for extracting action items from emails."""
+        # Create a more concise summary focusing on potential action items
         concise_summaries = []
         for email in email_summaries[:30]:  # Limit to 30 most recent emails
             concise_summaries.append({
-                'subject': email.get('subject', '')[:100],
                 'sender': email.get('sender', 'Unknown'),
+                'subject': email.get('subject', '')[:100],  # Limit subject length
                 'date': email.get('date', ''),
-                'snippet': email.get('body', '')[:300] if 'body' in email else ''  # Slightly longer for action items
+                'snippet': email.get('body', '')[:300] if 'body' in email else ''  # Use longer snippet for actions
             })
         
         # Include previous action items if available
@@ -382,71 +401,55 @@ class EmailIntelligence:
         if previous_insights and 'action_items' in previous_insights and previous_insights['action_items']:
             previous_actions_text = f"""
             IMPORTANT: Here are the action items identified from previous email analysis. 
-            Build upon this list, remove completed items, and add new items from the recent emails:
+            Some may have been completed. Update this list with new action items and remove completed ones:
             {json.dumps(previous_insights['action_items'], indent=2)}
             """
         
-        # Include structured knowledge about projects and goals if available
-        structured_knowledge_text = ""
-        if structured_knowledge:
-            projects = structured_knowledge.get('projects', [])
-            goals = structured_knowledge.get('goals', [])
-            
-            if projects or goals:
-                structured_knowledge_text += "\nIMPORTANT: Consider these user-defined projects and goals when identifying action items:\n"
-                
-                if projects:
-                    structured_knowledge_text += "\nProjects:\n"
-                    for project in projects:
-                        structured_knowledge_text += f"- {project.get('name')}: {project.get('description')}\n"
-                        structured_knowledge_text += f"  Status: {project.get('status')}, Priority: {project.get('priority')}\n"
-                
-                if goals:
-                    structured_knowledge_text += "\nGoals:\n"
-                    for goal in goals:
-                        structured_knowledge_text += f"- {goal.get('title')}: {goal.get('description')}\n"
-                        if goal.get('timeframe'):
-                            structured_knowledge_text += f"  Timeframe: {goal.get('timeframe')}\n"
-                        if goal.get('success_metrics'):
-                            structured_knowledge_text += f"  Success metrics: {goal.get('success_metrics')}\n"
+        # Construct the full prompt
+        prompt = f"""
+        You are an expert assistant for {user_email}. Your task is to analyze their recent email communications and identify action items, tasks, and follow-ups.
         
-        return f"""
-        Analyze the following email summaries from {user_email} to identify action items and follow-ups needed.
+        For each action item, provide:
+        1. Description of the task or action required
+        2. Who requested it (if applicable)
+        3. Due date or deadline (if mentioned)
+        4. Priority level (if discernible)
+        5. Related project or context
         
         {previous_actions_text}
         
-        {structured_knowledge_text}
+        Here are the recent email communications to analyze:
+        {json.dumps(concise_summaries, indent=2)}
         
-        Email data:
-        {json.dumps(email_summaries, indent=2)}
-        
-        Provide a comprehensive list of action items in JSON format with the following structure:
+        Provide your analysis in the following JSON format:
         {{
             "action_items": [
                 {{
-                    "description": "Brief description of the action item",
-                    "due_date": "Due date if specified (or null)",
+                    "description": "Description of the action item",
+                    "requester": "Person who requested it",
+                    "due_date": "Deadline if available",
                     "priority": "High/Medium/Low",
-                    "related_to": "Person or project related to this action",
-                    "status": "Pending/In Progress/Completed"
+                    "context": "Related project or context"
                 }}
             ]
         }}
         
-        Include only clear action items where I need to take action. Prioritize recent and urgent items.
-        For action items that appear in both the previous list and the new emails, update their status and details based on the latest information.
+        Only include clear action items that require follow-up.
+        Focus on quality over quantity - identify the most important and urgent items.
         """
+        
+        return prompt
     
     def _create_info_prompt(self, user_email: str, email_summaries: List[Dict], previous_insights: Dict[str, Any] = None, structured_knowledge: Dict[str, Any] = None) -> str:
         """Create a prompt for extracting important information from emails."""
-        # Create concise summaries for important information
+        # Create a more concise summary focusing on information content
         concise_summaries = []
         for email in email_summaries[:30]:  # Limit to 30 most recent emails
             concise_summaries.append({
-                'subject': email.get('subject', '')[:100],
                 'sender': email.get('sender', 'Unknown'),
+                'subject': email.get('subject', '')[:100],  # Limit subject length
                 'date': email.get('date', ''),
-                'snippet': email.get('body', '')[:300] if 'body' in email else ''
+                'snippet': email.get('body', '')[:300] if 'body' in email else ''  # Use longer snippet for info
             })
         
         # Include previous important information if available
@@ -454,452 +457,121 @@ class EmailIntelligence:
         if previous_insights and 'important_information' in previous_insights and previous_insights['important_information']:
             previous_info_text = f"""
             IMPORTANT: Here is important information identified from previous email analysis. 
-            Build upon this information with the new email data:
+            Some may no longer be relevant. Update this list with new information and remove outdated items:
             {json.dumps(previous_insights['important_information'], indent=2)}
             """
         
-        # Include structured knowledge files if available
-        structured_knowledge_text = ""
-        if structured_knowledge:
-            projects = structured_knowledge.get('projects', [])
-            goals = structured_knowledge.get('goals', [])
-            knowledge_files = structured_knowledge.get('knowledge_files', [])
-            
-            if knowledge_files:
-                structured_knowledge_text += "\nIMPORTANT: Consider these knowledge documents when identifying important information:\n"
-                for file in knowledge_files:
-                    structured_knowledge_text += f"\n- Document: {file.get('filename')}\n"
-                    structured_knowledge_text += f"  Category: {file.get('category')}\n"
-                    structured_knowledge_text += f"  Description: {file.get('description')}\n"
-                    if file.get('content'):
-                        content_excerpt = file.get('content')[:500] + "..." if len(file.get('content')) > 500 else file.get('content')
-                        structured_knowledge_text += f"  Content excerpt: {content_excerpt}\n"
+        # Construct the full prompt
+        prompt = f"""
+        You are an expert information analyst for {user_email}. Your task is to analyze their recent email communications and identify important information, announcements, decisions, and updates.
         
-            if projects:
-                structured_knowledge_text += "\nRelevant projects:\n"
-                for project in projects:
-                    structured_knowledge_text += f"- {project.get('name')}: {project.get('description')}\n"
-        
-            if goals:
-                structured_knowledge_text += "\nRelevant goals:\n"
-                for goal in goals:
-                    structured_knowledge_text += f"- {goal.get('title')}: {goal.get('description')}\n"
-        
-        return f"""
-        Analyze the following email summaries from {user_email} to identify important information, facts, and insights.
+        For each piece of important information, provide:
+        1. Brief description of the information
+        2. Source of the information (who shared it)
+        3. Date it was shared
+        4. Category (announcement, decision, update, etc.)
+        5. Relevance or impact
         
         {previous_info_text}
         
-        {structured_knowledge_text}
+        Here are the recent email communications to analyze:
+        {json.dumps(concise_summaries, indent=2)}
         
-        Email data:
-        {json.dumps(email_summaries, indent=2)}
-        
-        Provide a comprehensive list of important information in JSON format with the following structure:
+        Provide your analysis in the following JSON format:
         {{
             "important_information": [
                 {{
-                    "topic": "Brief topic or category",
-                    "details": "Detailed information",
-                    "source": "Person or organization this came from",
-                    "date_received": "When this information was received",
-                    "relevance": "Why this information is important"
+                    "description": "Description of the information",
+                    "source": "Person who shared it",
+                    "date": "Date it was shared",
+                    "category": "Type of information",
+                    "relevance": "Why it's important"
                 }}
             ]
         }}
         
-        Focus on extracting key facts, announcements, decisions, or other noteworthy information.
-        If a topic appears in both the previous information and the new emails, merge the details to create a more complete understanding of that topic.
+        Only include truly important information that has ongoing relevance.
+        Focus on quality over quantity - identify the most significant items.
         """
-    
-    def _get_structured_response(self, user_email: str, prompt: str, expected_key: str = None, days_back: int = 30) -> Dict[str, Any]:
-        """Get a structured response from Claude based on the provided prompt.
         
-        Args:
-            user_email: The email of the user for context
-            prompt: The prompt to send to Claude
-            expected_key: The expected key in the response JSON
-            days_back: Number of days back to analyze
-            
-        Returns:
-            Dict containing the structured response from Claude
-        """
-        try:
-            # Add system instruction to format response as JSON
-            system_prompt = f"""You are an expert email analyst for {user_email}.
-            
-            Analyze the email data provided in the prompt to extract insights.
-            Focus on emails from the past {days_back} days when available.
-            
-            Always respond with well-structured JSON data as requested in the prompt.
-            Do not include any explanatory text outside the JSON structure.
-            """
-            
-            # Send to Claude
-            try:
-                # Try the new Anthropic SDK interface
-                response = self.claude_client.messages.create(
-                    model="claude-3-opus-20240229",
-                    max_tokens=4000,
-                    temperature=0.2,
-                    system=system_prompt,
-                    messages=[{"role": "user", "content": prompt}]
-                )
-                assistant_response = response.content[0].text
-            except AttributeError:
-                # Fallback for older SDK versions
-                logger.info("Using fallback Claude client interface")
-                response = self.claude_client.completions.create(
-                    model="claude-3-opus-20240229",
-                    max_tokens=4000,
-                    temperature=0.2,
-                    system=system_prompt,
-                    prompt=prompt
-                )
-                assistant_response = response.completion
-            
-            # Try to parse the response as JSON
-            try:
-                # Clean the response - remove markdown code blocks if present
-                if assistant_response.startswith("```json"):
-                    assistant_response = assistant_response.strip("```json").strip("```").strip()
-                elif assistant_response.startswith("```"):
-                    assistant_response = assistant_response.strip("```").strip()
-                
-                # Try to extract JSON from the response
-                # First, try to parse the entire response as JSON
-                try:
-                    structured_response = json.loads(assistant_response)
-                except json.JSONDecodeError:
-                    # If that fails, try to find JSON in the response
-                    import re
-                    json_match = re.search(r'({.*})', assistant_response, re.DOTALL)
-                    if json_match:
-                        structured_response = json.loads(json_match.group(1))
-                    else:
-                        # For other JSON parsing errors
-                        logger.error(f"Failed to parse Claude response as JSON: {assistant_response[:100]}...")
-                        return {expected_key: [] if expected_key and expected_key != "communication_patterns" else {}} if expected_key else {"error": "Failed to parse response as JSON"}
-                
-                # Validate that the expected key is present
-                if expected_key and expected_key not in structured_response:
-                    logger.warning(f"Expected key '{expected_key}' not found in Claude's response")
-                    structured_response[expected_key] = [] if expected_key != "communication_patterns" else {}
-                
-                return structured_response
-            except Exception as e:
-                logger.error(f"Error processing Claude response: {str(e)}")
-                return {expected_key: [] if expected_key and expected_key != "communication_patterns" else {}} if expected_key else {"error": f"Error processing response: {str(e)}"}
-                
-        except Exception as e:
-            logger.error(f"Error getting structured response: {str(e)}")
-            return {expected_key: [] if expected_key and expected_key != "communication_patterns" else {}} if expected_key else {"error": str(e)}
+        return prompt
     
-    def scan_urgent_emails(self, user_email: str, access_token: str, hours_back: int = 24) -> Dict[str, Any]:
+    def _get_structured_response(self, user_email: str, prompt: str, key_field: str, days_back: int) -> Dict[str, Any]:
         """
-        Scan recent emails for urgent items requiring attention.
-        
-        Args:
-            user_email: The email of the user whose emails to scan
-            access_token: OAuth access token for Gmail API
-            hours_back: Number of hours back to scan (default: 24)
-            
-        Returns:
-            Dict containing urgent emails and action items
-        """
-        logger.info(f"Scanning urgent emails from last {hours_back} hours for {user_email}")
-        
-        try:
-            # Validate we have an access token
-            if not access_token:
-                logger.error(f"No access token provided for {user_email}")
-                return {
-                    "status": "error",
-                    "message": "No access token provided for Gmail API",
-                    "urgent_emails": []
-                }
-                
-            # Initialize Gmail connector with the access token
-            gmail = GmailConnector(access_token)
-            
-            # Test the connection
-            if not gmail.test_connection():
-                logger.error(f"Failed to connect to Gmail API for {user_email}")
-                return {
-                    "status": "error",
-                    "message": "Failed to connect to Gmail API",
-                    "urgent_emails": []
-                }
-            
-            # Calculate days back from hours (needed for Gmail API call)
-            days_back = max(1, int(hours_back / 24) + 1)  # At least 1 day, rounded up
-            
-            # Fetch real emails using the Gmail API
-            logger.info(f"Fetching emails from Gmail API for {user_email} from last {hours_back} hours")
-            email_summaries = gmail.get_recent_emails(days_back=days_back, max_results=50)
-            
-            if not email_summaries:
-                logger.warning(f"No emails found for {user_email} in the last {days_back} days")
-                return {
-                    "status": "success",
-                    "message": "No emails found in the specified time period",
-                    "urgent_emails": []
-                }
-            
-            # Filter emails to only include those from the last X hours
-            recent_time = datetime.now() - timedelta(hours=hours_back)
-            recent_emails = []
-            
-            for email in email_summaries:
-                try:
-                    # Parse the email date
-                    email_date_str = email.get('date', '')
-                    if email_date_str:
-                        # Parse the date string (this is a simplification, might need adjustment)
-                        email_date = datetime.strptime(email_date_str[:25], '%a, %d %b %Y %H:%M:%S')
-                        if email_date > recent_time:
-                            recent_emails.append(email)
-                except Exception as e:
-                    # If date parsing fails, include the email to be safe
-                    logger.warning(f"Error parsing email date: {str(e)}")
-                    recent_emails.append(email)
-            
-            logger.info(f"Found {len(recent_emails)} emails in the last {hours_back} hours")
-            
-            # Create a prompt for Claude to identify urgent emails
-            prompt = f"""
-            Please scan the following emails from the last {hours_back} hours and identify any urgent items that require my attention.
-            
-            Consider the following as potentially urgent:
-            1. Emails marked as high priority
-            2. Emails with urgent language in the subject or body
-            3. Emails from key stakeholders (managers, executives, important clients)
-            4. Emails mentioning deadlines within the next 48 hours
-            5. Emails that are part of a rapid back-and-forth thread
-            
-            For each urgent email, provide:
-            1. The sender and subject
-            2. A brief summary of the content
-            3. Why it's considered urgent
-            4. Recommended action (if any)
-            
-            Email data:
-            {json.dumps(recent_emails, indent=2)}
-            
-            Format the response as structured JSON with an array of "urgent_emails" objects, each containing
-            "sender", "subject", "summary", "urgency_reason", and "recommended_action".
-            """
-            
-            # Send the prompt to Claude using our structured response method
-            response = self._get_structured_response(user_email, prompt, "urgent_emails", hours_back)
-            
-            logger.info(f"Successfully scanned urgent emails for {user_email}")
-            return {
-                "status": "success",
-                "message": "Urgent email scan completed",
-                "urgent_emails": response.get("urgent_emails", [])
-            }
-        except Exception as e:
-            logger.error(f"Error scanning urgent emails for {user_email}: {str(e)}")
-            return {
-                "error": str(e),
-                "status": "failed",
-                "message": "Failed to scan urgent emails",
-                "urgent_emails": []
-            }
-    
-    def analyze_person(self, user_email: str, contact_email: str, access_token: str = None, days_back: int = 30) -> Dict[str, Any]:
-        """
-        Analyze email interactions with a specific person to build a profile.
+        Get a structured response from Claude for a specific analysis prompt.
         
         Args:
             user_email: The email of the user
-            contact_email: The email of the contact to analyze
-            access_token: OAuth access token for Gmail API
-            days_back: Number of days back to analyze (default: 30)
+            prompt: The analysis prompt to send to Claude
+            key_field: The key field expected in the response
+            days_back: Number of days back being analyzed
             
         Returns:
-            Dict containing analysis of the relationship with this person
+            Dict containing the structured response
         """
-        logger.info(f"Analyzing person {contact_email} for {user_email}")
-        
         try:
-            # Validate we have an access token
-            if not access_token:
-                logger.error(f"No access token provided for {user_email}")
-                return {
-                    "status": "error",
-                    "message": "No access token provided for Gmail API",
-                    "contact_name": "",
-                    "interaction_frequency": "",
-                    "response_patterns": "",
-                    "common_topics": [],
-                    "sentiment_analysis": "",
-                    "action_items": [],
-                    "relationship_context": "",
-                    "last_contact_date": ""
-                }
-                
-            # Initialize Gmail connector with the access token
-            gmail = GmailConnector(access_token)
+            logger.info(f"Getting {key_field} analysis for {user_email}")
             
-            # Test the connection
-            if not gmail.test_connection():
-                logger.error(f"Failed to connect to Gmail API for {user_email}")
-                return {
-                    "status": "error",
-                    "message": "Failed to connect to Gmail API",
-                    "contact_name": "",
-                    "interaction_frequency": "",
-                    "response_patterns": "",
-                    "common_topics": [],
-                    "sentiment_analysis": "",
-                    "action_items": [],
-                    "relationship_context": "",
-                    "last_contact_date": ""
-                }
+            # Set up system prompt
+            system_prompt = f"""
+            You are an AI assistant specialized in analyzing email data for business intelligence.
+            Your task is to analyze the provided email data and extract structured insights.
             
-            # Fetch real emails using the Gmail API
-            logger.info(f"Fetching emails from Gmail API for {user_email} related to {contact_email}")
-            # Get emails from the last N days
-            email_summaries = gmail.get_recent_emails(days_back=days_back, max_results=100)
-            
-            # Filter emails to only include those involving the contact
-            contact_emails = []
-            for email in email_summaries:
-                if contact_email.lower() in email.get('sender', '').lower() or contact_email.lower() in email.get('to', '').lower():
-                    contact_emails.append(email)
-            
-            if not contact_emails:
-                logger.warning(f"No emails found between {user_email} and {contact_email} in the last {days_back} days")
-                return {
-                    "status": "warning",
-                    "message": f"No emails found with {contact_email} in the last {days_back} days",
-                    "contact_name": "",
-                    "interaction_frequency": "None in the analyzed period",
-                    "response_patterns": "N/A",
-                    "common_topics": [],
-                    "sentiment_analysis": "N/A",
-                    "action_items": [],
-                    "relationship_context": "No recent interactions",
-                    "last_contact_date": "None in the analyzed period"
-                }
-            
-            logger.info(f"Found {len(contact_emails)} emails between {user_email} and {contact_email}")
-            
-            # Create a prompt for Claude to analyze interactions with this person
-            prompt = f"""
-            Please analyze my email interactions with {contact_email} and provide a comprehensive profile.
-            
-            Include:
-            1. Interaction frequency: How often we communicate and patterns over time
-            2. Response times: How quickly they respond to me and vice versa
-            3. Topics: Common subjects and projects we discuss
-            4. Sentiment: The general tone and sentiment of our communications
-            5. Action items: Any pending items or follow-ups with this person
-            6. Relationship context: Their role, organization, and our relationship history
-            
-            Analyze the following email data:
-            {json.dumps(contact_emails, indent=2)}
-            
-            Format the response as structured JSON with the following keys:
-            "contact_name", "interaction_frequency", "response_patterns", "common_topics", 
-            "sentiment_analysis", "action_items", "relationship_context", "last_contact_date"
+            IMPORTANT GUIDELINES:
+            1. ALWAYS respond in valid JSON format with the structure exactly as requested
+            2. Do not include any explanations or text outside the JSON structure
+            3. If you're unsure about something, make a reasonable inference rather than omitting information
+            4. Focus on quality over quantity in your analysis
+            5. Ensure all field names match exactly what was requested
             """
             
-            # Send the prompt to Claude
-            response = self._get_structured_response(user_email, prompt)
-            logger.info(f"Successfully analyzed person {contact_email} for {user_email}")
-            return response
-        except Exception as e:
-            logger.error(f"Error analyzing person {contact_email} for {user_email}: {str(e)}")
-            return {
-                "error": str(e),
-                "status": "failed",
-                "message": f"Failed to analyze person {contact_email}"
-            }
-    
-    def identify_key_contacts(self, user_email: str, access_token: str = None, days_back: int = 30) -> Dict[str, Any]:
-        """
-        Identify and analyze key contacts from email communications.
-        
-        Args:
-            user_email: The email of the user
-            access_token: OAuth access token for Gmail API
-            days_back: Number of days back to analyze (default: 30)
+            # Get response from Claude
+            response = self.claude_client.messages.create(
+                model="claude-3-opus-20240229",
+                max_tokens=4000,
+                system=system_prompt,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ]
+            )
             
-        Returns:
-            Dict containing key contacts and relationship insights
-        """
-        logger.info(f"Identifying key contacts for {user_email}")
-        
-        try:
-            # Validate we have an access token
-            if not access_token:
-                logger.error(f"No access token provided for {user_email}")
-                return {
-                    "status": "error",
-                    "message": "No access token provided for Gmail API",
-                    "key_contacts": []
-                }
+            # Extract and parse JSON from response
+            response_text = response.content[0].text
+            
+            # Clean up response text to ensure it's valid JSON
+            # Remove any markdown code block markers
+            response_text = response_text.replace("```json", "").replace("```", "").strip()
+            
+            # Parse JSON
+            try:
+                parsed_response = json.loads(response_text)
                 
-            # Initialize Gmail connector with the access token
-            gmail = GmailConnector(access_token)
-            
-            # Test the connection
-            if not gmail.test_connection():
-                logger.error(f"Failed to connect to Gmail API for {user_email}")
-                return {
-                    "status": "error",
-                    "message": "Failed to connect to Gmail API",
-                    "key_contacts": []
-                }
-            
-            # Fetch real emails using the Gmail API
-            logger.info(f"Fetching emails from Gmail API for {user_email}")
-            email_summaries = gmail.get_recent_emails(days_back=days_back, max_results=100)
-            
-            if not email_summaries:
-                logger.warning(f"No emails found for {user_email} in the last {days_back} days")
-                return {
-                    "status": "warning",
-                    "message": "No emails found in the analyzed period",
-                    "key_contacts": []
-                }
-            
-            logger.info(f"Successfully fetched {len(email_summaries)} emails for contact analysis")
-            
-            # Create a prompt for Claude to identify key contacts
-            prompt = f"""
-            Please analyze the following email communications from the last {days_back} days and identify my key contacts.
-            
-            For each key contact, provide:
-            1. Their name and email address
-            2. Their role or organization (if apparent)
-            3. The frequency of our communication
-            4. The nature of our relationship (professional, personal, etc.)
-            5. Common topics or projects we discuss
-            
-            Email data:
-            {json.dumps(email_summaries, indent=2)}
-            
-            Format the response as structured JSON with an array of "key_contacts" objects, 
-            each containing "name", "email", "role", "communication_frequency", "relationship_type", and "common_topics"
-            """
-            
-            # Send the prompt to Claude
-            response = self._get_structured_response(user_email, prompt, "key_contacts", days_back)
-            logger.info(f"Successfully identified key contacts for {user_email}")
-            return {
-                "status": "success",
-                "message": "Key contacts identified successfully",
-                "key_contacts": response.get("key_contacts", [])
-            }
+                # Validate that the expected key field is present
+                if key_field not in parsed_response:
+                    logger.warning(f"Expected key '{key_field}' not found in response for {user_email}")
+                    parsed_response[key_field] = [] if key_field != "communication_patterns" else {}
+                
+                return parsed_response
+                
+            except json.JSONDecodeError as e:
+                logger.error(f"Failed to parse JSON response for {key_field} analysis: {str(e)}")
+                logger.error(f"Response text: {response_text[:500]}...")
+                
+                # Return empty result with the expected structure
+                if key_field == "communication_patterns":
+                    return {key_field: {}}
+                else:
+                    return {key_field: []}
+                
         except Exception as e:
-            logger.error(f"Error identifying key contacts for {user_email}: {str(e)}")
-            return {
-                "error": str(e),
-                "status": "failed",
-                "message": "Failed to identify key contacts",
-                "key_contacts": []
-            }
+            logger.error(f"Error getting {key_field} analysis for {user_email}: {str(e)}")
+            logger.error(traceback.format_exc())
+            
+            # Return empty result with the expected structure
+            if key_field == "communication_patterns":
+                return {key_field: {}}
+            else:
+                return {key_field: []}

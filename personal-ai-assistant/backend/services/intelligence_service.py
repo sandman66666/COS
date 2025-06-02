@@ -380,3 +380,150 @@ class IntelligenceService:
             'goals': goals,
             'knowledge_files': knowledge_content
         }
+        
+    def process_email(self, email: Dict[str, Any], user_email: str) -> None:
+        """Process a single email and update the database with extracted information
+        
+        Args:
+            email: Email data from the Gmail API
+            user_email: The user's email address
+        """
+        logger.info(f"Processing email: {email.get('subject', 'No subject')}")
+        
+        session = self.SessionLocal()
+        try:
+            # Get or create user intelligence record
+            user_intel = session.query(UserIntelligence).filter_by(user_email=user_email).first()
+            if not user_intel:
+                user_intel = UserIntelligence(user_email=user_email)
+                session.add(user_intel)
+                session.commit()
+            
+            # Extract contact information
+            if 'from' in email and email['from'].get('email'):
+                contact_email = email['from'].get('email')
+                contact_name = email['from'].get('name', '')
+                
+                # Skip if the contact is the user
+                if contact_email != user_email:
+                    # Update contacts knowledge
+                    contacts_knowledge = user_intel.contacts_knowledge or {}
+                    
+                    if contact_email not in contacts_knowledge:
+                        contacts_knowledge[contact_email] = {
+                            'name': contact_name,
+                            'email': contact_email,
+                            'first_contact': email.get('date'),
+                            'last_contact': email.get('date'),
+                            'email_count': 1,
+                            'topics': [email.get('subject', 'No subject')]
+                        }
+                    else:
+                        contacts_knowledge[contact_email]['email_count'] += 1
+                        contacts_knowledge[contact_email]['last_contact'] = email.get('date')
+                        
+                        # Add subject to topics if not already present
+                        if email.get('subject') and email.get('subject') not in contacts_knowledge[contact_email].get('topics', []):
+                            if 'topics' not in contacts_knowledge[contact_email]:
+                                contacts_knowledge[contact_email]['topics'] = []
+                            contacts_knowledge[contact_email]['topics'].append(email.get('subject'))
+                    
+                    user_intel.contacts_knowledge = contacts_knowledge
+            
+            # Extract potential action items from email content
+            if email.get('snippet'):
+                snippet = email.get('snippet', '')
+                subject = email.get('subject', 'No subject')
+                
+                # Simple heuristic to detect potential action items
+                action_keywords = ['please', 'need', 'required', 'action', 'todo', 'to-do', 'deadline', 'by tomorrow', 'asap']
+                is_potential_action = any(keyword in snippet.lower() or keyword in subject.lower() for keyword in action_keywords)
+                
+                if is_potential_action:
+                    # Add to tactical notifications
+                    tactical_notifications = user_intel.tactical_notifications or []
+                    
+                    # Create a new notification
+                    notification = {
+                        'id': str(len(tactical_notifications) + 1),
+                        'text': f"Action item from email: {subject}",
+                        'source': 'email',
+                        'date': email.get('date'),
+                        'priority': 'medium',
+                        'email_id': email.get('id', '')
+                    }
+                    
+                    tactical_notifications.append(notification)
+                    user_intel.tactical_notifications = tactical_notifications
+            
+            # Update last_email_analysis with basic info
+            last_analysis = user_intel.last_email_analysis or {}
+            last_analysis['last_processed_email_date'] = email.get('date')
+            last_analysis['total_emails_processed'] = last_analysis.get('total_emails_processed', 0) + 1
+            last_analysis['summary'] = f"Processed {last_analysis.get('total_emails_processed', 0)} emails"
+            
+            user_intel.last_email_analysis = last_analysis
+            
+            # Update email_insights_cache
+            insights_cache = user_intel.email_insights_cache or {}
+            insights_cache['generated_at'] = datetime.utcnow().isoformat()
+            
+            # Update key relationships in insights cache
+            if 'key_relationships' not in insights_cache:
+                insights_cache['key_relationships'] = []
+            
+            # Convert contacts to relationships format
+            for email_addr, contact in user_intel.contacts_knowledge.items():
+                # Check if this contact is already in key_relationships
+                existing = False
+                for rel in insights_cache['key_relationships']:
+                    if rel.get('email') == email_addr:
+                        existing = True
+                        # Update existing relationship
+                        rel['email_count'] = contact.get('email_count', 0)
+                        rel['last_contact'] = contact.get('last_contact', '')
+                        break
+                
+                if not existing:
+                    # Add new relationship
+                    insights_cache['key_relationships'].append({
+                        'name': contact.get('name', ''),
+                        'email': email_addr,
+                        'relationship': 'Contact',
+                        'email_count': contact.get('email_count', 0),
+                        'last_contact': contact.get('last_contact', '')
+                    })
+            
+            # Add action items to insights cache
+            if 'action_items' not in insights_cache:
+                insights_cache['action_items'] = []
+            
+            # Add notifications to action items
+            for notification in user_intel.tactical_notifications or []:
+                # Check if this notification is already in action_items
+                existing = False
+                for action in insights_cache['action_items']:
+                    if action.get('text') == notification.get('text'):
+                        existing = True
+                        break
+                
+                if not existing:
+                    # Add new action item
+                    insights_cache['action_items'].append({
+                        'text': notification.get('text', ''),
+                        'due_date': '',  # No due date from simple processing
+                        'priority': notification.get('priority', 'medium'),
+                        'status': 'open'
+                    })
+            
+            user_intel.email_insights_cache = insights_cache
+            
+            # Commit changes
+            session.commit()
+            
+        except Exception as e:
+            logger.error(f"Error processing email: {str(e)}")
+            logger.error(traceback.format_exc())
+            session.rollback()
+        finally:
+            session.close()

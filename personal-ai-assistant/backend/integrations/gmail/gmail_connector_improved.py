@@ -8,7 +8,7 @@ import logging
 import traceback
 from datetime import datetime, timedelta
 from email.mime.text import MIMEText
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Tuple, Union
 
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
@@ -39,19 +39,36 @@ class ImprovedGmailConnector:
                 logger.error("No access token in token data")
                 raise ValueError("Access token is required for Gmail API access")
             
+            # Log token data for debugging (without exposing sensitive values)
+            logger.info(f"Token data contains keys: {list(self.token_data.keys())}")
+            logger.info(f"Has refresh_token: {'refresh_token' in self.token_data}")
+            logger.info(f"Has client_id: {'client_id' in self.token_data}")
+            logger.info(f"Has client_secret: {'client_secret' in self.token_data}")
+            
+            # Ensure we have all required fields
+            required_fields = ['access_token', 'client_id', 'client_secret']
+            missing_fields = [field for field in required_fields if field not in self.token_data]
+            if missing_fields:
+                logger.error(f"Missing required token fields: {missing_fields}")
+                raise ValueError(f"Missing required token fields: {missing_fields}")
+            
             # Create credentials with full token data
             credentials = Credentials(
                 token=self.token_data.get('access_token'),
                 refresh_token=self.token_data.get('refresh_token'),
-                token_uri='https://oauth2.googleapis.com/token',
+                token_uri=self.token_data.get('token_uri', 'https://oauth2.googleapis.com/token'),
                 client_id=self.token_data.get('client_id'),
                 client_secret=self.token_data.get('client_secret'),
                 scopes=['https://www.googleapis.com/auth/gmail.readonly']
             )
             
             # Check if token needs refresh
-            if hasattr(credentials, 'expired') and credentials.expired:
+            if credentials.expired if hasattr(credentials, 'expired') else False:
                 logger.info("Token expired, attempting to refresh...")
+                if not credentials.refresh_token:
+                    logger.error("No refresh token available for expired token")
+                    raise ValueError("Token expired and no refresh token available")
+                    
                 credentials.refresh(Request())
                 # Update token data with new access token
                 self.token_data['access_token'] = credentials.token
@@ -63,7 +80,7 @@ class ImprovedGmailConnector:
             
         except Exception as e:
             logger.error(f"Error initializing Gmail service: {str(e)}")
-            logger.error(f"Token data keys: {list(self.token_data.keys()) if self.token_data else 'None'}")
+            logger.error(traceback.format_exc())
             raise
     
     def test_connection(self) -> Dict[str, Any]:
@@ -209,6 +226,50 @@ class ImprovedGmailConnector:
                     'error_type': type(e).__name__
                 }
     
+    def _parse_email_address(self, address_str: str) -> Dict[str, str]:
+        """Parse an email address string into name and email components.
+        
+        Args:
+            address_str: Email address string like 'John Doe <john@example.com>'
+            
+        Returns:
+            Dictionary with 'name' and 'email' keys
+        """
+        if not address_str:
+            return {'name': '', 'email': ''}
+            
+        # Check if it has the format "Name <email>"
+        import re
+        match = re.match(r'([^<]*)<([^>]*)>', address_str)
+        
+        if match:
+            name = match.group(1).strip()
+            email = match.group(2).strip()
+            return {'name': name, 'email': email}
+        else:
+            # Just an email address
+            return {'name': address_str.split('@')[0] if '@' in address_str else address_str, 
+                    'email': address_str}
+    
+    def _parse_multiple_addresses(self, addresses_str: str) -> List[Dict[str, str]]:
+        """Parse a string with multiple email addresses.
+        
+        Args:
+            addresses_str: String with comma-separated email addresses
+            
+        Returns:
+            List of dictionaries with 'name' and 'email' keys
+        """
+        if not addresses_str:
+            return []
+            
+        # Split by commas, but handle commas in quotes
+        import re
+        # This regex splits by commas not inside quotes
+        parts = re.findall(r'(?:[^,"]|\"[^\"]*\")+', addresses_str)
+        
+        return [self._parse_email_address(part.strip()) for part in parts]
+    
     def _get_email_details(self, message_id: str) -> Optional[Dict[str, Any]]:
         """Get details of a specific email with better error handling."""
         try:
@@ -225,10 +286,15 @@ class ImprovedGmailConnector:
             
             # Get key headers with defaults
             subject = header_dict.get('subject', 'No Subject')
-            sender = header_dict.get('from', 'Unknown Sender')
+            sender_str = header_dict.get('from', 'Unknown Sender')
             date_str = header_dict.get('date', '')
-            to = header_dict.get('to', '')
-            cc = header_dict.get('cc', '')
+            to_str = header_dict.get('to', '')
+            cc_str = header_dict.get('cc', '')
+            
+            # Parse email addresses
+            sender = self._parse_email_address(sender_str)
+            to_list = self._parse_multiple_addresses(to_str)
+            cc_list = self._parse_multiple_addresses(cc_str)
             
             # Parse date
             email_date = None
@@ -256,8 +322,8 @@ class ImprovedGmailConnector:
                 'sender': sender,
                 'date': date_str,
                 'date_parsed': email_date.isoformat() if email_date else None,
-                'to': to,
-                'cc': cc,
+                'to': to_list,
+                'cc': cc_list,
                 'body': body[:5000],  # Limit body size
                 'body_truncated': len(body) > 5000,
                 'is_unread': is_unread,

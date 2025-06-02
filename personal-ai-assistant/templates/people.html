@@ -1,0 +1,958 @@
+{% extends "layout.html" %}
+
+{% block title %}People | Chief of Staff AI{% endblock %}
+
+{% block additional_styles %}
+<style>
+    .people-container {
+        display: flex;
+        gap: 1.5rem;
+    }
+    .people-sidebar {
+        width: 280px;
+        flex-shrink: 0;
+    }
+    .people-main {
+        flex-grow: 1;
+    }
+    .people-card {
+        background-color: #fff;
+        border-radius: 10px;
+        padding: 1.5rem;
+        margin-bottom: 1.5rem;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    .search-box {
+        position: relative;
+        margin-bottom: 1.5rem;
+    }
+    .search-box input {
+        width: 100%;
+        padding: 0.75rem 1rem 0.75rem 2.5rem;
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+    }
+    .search-box i {
+        position: absolute;
+        left: 1rem;
+        top: 50%;
+        transform: translateY(-50%);
+        color: #6c757d;
+    }
+    .people-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+    }
+    .person-item {
+        padding: 1rem;
+        border-bottom: 1px solid #dee2e6;
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        cursor: pointer;
+        transition: background-color 0.2s;
+    }
+    .person-item:hover {
+        background-color: #f8f9fa;
+    }
+    .person-item:last-child {
+        border-bottom: none;
+    }
+    .person-item.active {
+        background-color: #e9ecef;
+    }
+    .person-avatar {
+        width: 50px;
+        height: 50px;
+        border-radius: 50%;
+        background-color: #4a6fdc;
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.5rem;
+        font-weight: 500;
+    }
+    .person-info {
+        flex-grow: 1;
+    }
+    .person-name {
+        font-weight: 600;
+        margin: 0;
+    }
+    .person-meta {
+        font-size: 0.85rem;
+        color: #6c757d;
+    }
+    .person-detail-header {
+        display: flex;
+        align-items: center;
+        gap: 1.5rem;
+        margin-bottom: 2rem;
+    }
+    .person-detail-avatar {
+        width: 100px;
+        height: 100px;
+        border-radius: 50%;
+        background-color: #4a6fdc;
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 2.5rem;
+        font-weight: 500;
+    }
+    .person-detail-info h2 {
+        margin: 0 0 0.5rem 0;
+    }
+    .person-detail-meta {
+        display: flex;
+        gap: 1.5rem;
+        font-size: 0.9rem;
+        color: #6c757d;
+    }
+    .person-detail-item {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    .person-detail-tabs {
+        display: flex;
+        border-bottom: 1px solid #dee2e6;
+        margin-bottom: 1.5rem;
+    }
+    .person-detail-tab {
+        padding: 0.75rem 1.5rem;
+        cursor: pointer;
+        border-bottom: 2px solid transparent;
+    }
+    .person-detail-tab.active {
+        border-bottom-color: #4a6fdc;
+        font-weight: 500;
+    }
+    .person-detail-content {
+        display: none;
+    }
+    .person-detail-content.active {
+        display: block;
+    }
+    .email-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+    }
+    .email-item {
+        padding: 1rem;
+        border-bottom: 1px solid #dee2e6;
+    }
+    .email-item:last-child {
+        border-bottom: none;
+    }
+    .email-header {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 0.5rem;
+    }
+    .email-subject {
+        font-weight: 500;
+        margin: 0;
+    }
+    .email-date {
+        font-size: 0.85rem;
+        color: #6c757d;
+    }
+    .email-snippet {
+        font-size: 0.9rem;
+        color: #6c757d;
+        margin: 0;
+    }
+    .meeting-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+    }
+    .meeting-item {
+        padding: 1rem;
+        border-bottom: 1px solid #dee2e6;
+    }
+    .meeting-item:last-child {
+        border-bottom: none;
+    }
+    .meeting-header {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 0.5rem;
+    }
+    .meeting-title {
+        font-weight: 500;
+        margin: 0;
+    }
+    .meeting-date {
+        font-size: 0.85rem;
+        color: #6c757d;
+    }
+    .meeting-details {
+        font-size: 0.9rem;
+        color: #6c757d;
+        margin: 0;
+    }
+    .note-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+    }
+    .note-item {
+        padding: 1rem;
+        border-bottom: 1px solid #dee2e6;
+    }
+    .note-item:last-child {
+        border-bottom: none;
+    }
+    .note-header {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 0.5rem;
+    }
+    .note-title {
+        font-weight: 500;
+        margin: 0;
+    }
+    .note-date {
+        font-size: 0.85rem;
+        color: #6c757d;
+    }
+    .note-content {
+        font-size: 0.9rem;
+        margin: 0;
+    }
+    .add-note-form {
+        margin-top: 1rem;
+    }
+    .empty-state {
+        text-align: center;
+        padding: 3rem;
+        color: #6c757d;
+    }
+    .empty-state i {
+        font-size: 3rem;
+        margin-bottom: 1rem;
+        color: #dee2e6;
+    }
+    .filter-group {
+        margin-bottom: 1.5rem;
+    }
+    .filter-title {
+        font-weight: 500;
+        margin-bottom: 0.75rem;
+    }
+    .filter-options {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+    .filter-option {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    .filter-option input {
+        margin: 0;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="content-container">
+    <div class="header">
+        <h1>People</h1>
+        <p class="mb-0">Manage your contacts and relationships</p>
+    </div>
+    
+    <div class="people-container">
+        <div class="people-sidebar">
+            <div class="people-card">
+                <div class="search-box">
+                    <i class="bi bi-search"></i>
+                    <input type="text" placeholder="Search people..." id="peopleSearch">
+                </div>
+                
+                <div class="filter-group">
+                    <div class="filter-title">Filter by</div>
+                    <div class="filter-options">
+                        <div class="filter-option">
+                            <input type="checkbox" id="filterRecent" checked>
+                            <label for="filterRecent">Recent contacts</label>
+                        </div>
+                        <div class="filter-option">
+                            <input type="checkbox" id="filterFrequent" checked>
+                            <label for="filterFrequent">Frequent contacts</label>
+                        </div>
+                        <div class="filter-option">
+                            <input type="checkbox" id="filterImportant" checked>
+                            <label for="filterImportant">Important contacts</label>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="filter-group">
+                    <div class="filter-title">Sort by</div>
+                    <div class="filter-options">
+                        <div class="filter-option">
+                            <input type="radio" name="sortOption" id="sortName" checked>
+                            <label for="sortName">Name</label>
+                        </div>
+                        <div class="filter-option">
+                            <input type="radio" name="sortOption" id="sortRecent">
+                            <label for="sortRecent">Recent activity</label>
+                        </div>
+                        <div class="filter-option">
+                            <input type="radio" name="sortOption" id="sortFrequency">
+                            <label for="sortFrequency">Interaction frequency</label>
+                        </div>
+                    </div>
+                </div>
+                
+                <button class="btn btn-primary w-100 mb-3" id="addPersonBtn">
+                    <i class="bi bi-person-plus"></i> Add New Contact
+                </button>
+                
+                <ul class="people-list" id="peopleList">
+                    <!-- People will be loaded here -->
+                </ul>
+            </div>
+        </div>
+        
+        <div class="people-main">
+            <div id="personDetailView" style="display: none;">
+                <!-- Person details will be loaded here -->
+            </div>
+            
+            <div id="emptyStateView">
+                <div class="people-card">
+                    <div class="card-header d-flex justify-content-between align-items-center mb-3">
+                        <h3 class="mb-0">Top Relationships</h3>
+                        <div class="text-muted small">Based on email activity</div>
+                    </div>
+                    <div id="topRelationshipsList">
+                        <!-- Top relationships will be loaded here -->
+                        <div class="text-center text-muted py-3">Loading relationships...</div>
+                    </div>
+                </div>
+                
+                <div class="empty-state mt-4">
+                    <i class="bi bi-people"></i>
+                    <h3>Select a person to view details</h3>
+                    <p>Or add a new contact to get started</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Person Detail Template -->
+<template id="personDetailTemplate">
+    <div class="people-card">
+        <div class="person-detail-header">
+            <div class="person-detail-avatar"></div>
+            <div class="person-detail-info">
+                <h2 class="person-name"></h2>
+                <div class="person-detail-meta">
+                    <div class="person-detail-item">
+                        <i class="bi bi-building"></i>
+                        <span class="person-organization"></span>
+                    </div>
+                    <div class="person-detail-item">
+                        <i class="bi bi-envelope"></i>
+                        <span class="person-email"></span>
+                    </div>
+                    <div class="person-detail-item">
+                        <i class="bi bi-telephone"></i>
+                        <span class="person-phone"></span>
+                    </div>
+                </div>
+            </div>
+            <div class="ms-auto">
+                <button class="btn btn-outline-primary btn-sm me-2 edit-person">
+                    <i class="bi bi-pencil"></i> Edit
+                </button>
+                <button class="btn btn-outline-danger btn-sm delete-person">
+                    <i class="bi bi-trash"></i> Delete
+                </button>
+            </div>
+        </div>
+        
+        <div class="person-detail-tabs">
+            <div class="person-detail-tab active" data-tab="overview">Overview</div>
+            <div class="person-detail-tab" data-tab="emails">Emails</div>
+            <div class="person-detail-tab" data-tab="meetings">Meetings</div>
+            <div class="person-detail-tab" data-tab="notes">Notes</div>
+        </div>
+        
+        <div class="person-detail-content active" id="overview-tab">
+            <div class="row">
+                <div class="col-md-6">
+                    <h4>Contact Information</h4>
+                    <table class="table">
+                        <tbody>
+                            <tr>
+                                <th>Email</th>
+                                <td class="person-email-detail"></td>
+                            </tr>
+                            <tr>
+                                <th>Phone</th>
+                                <td class="person-phone-detail"></td>
+                            </tr>
+                            <tr>
+                                <th>Organization</th>
+                                <td class="person-organization-detail"></td>
+                            </tr>
+                            <tr>
+                                <th>Title</th>
+                                <td class="person-title-detail"></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="col-md-6">
+                    <h4>Interaction Summary</h4>
+                    <table class="table">
+                        <tbody>
+                            <tr>
+                                <th>Last Contact</th>
+                                <td class="person-last-contact"></td>
+                            </tr>
+                            <tr>
+                                <th>Emails Exchanged</th>
+                                <td class="person-email-count"></td>
+                            </tr>
+                            <tr>
+                                <th>Meetings</th>
+                                <td class="person-meeting-count"></td>
+                            </tr>
+                            <tr>
+                                <th>Projects</th>
+                                <td class="person-projects"></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            
+            <h4 class="mt-4">Recent Activity</h4>
+            <div class="recent-activity"></div>
+        </div>
+        
+        <div class="person-detail-content" id="emails-tab">
+            <h4>Email Communications</h4>
+            <ul class="email-list">
+                <!-- Emails will be loaded here -->
+            </ul>
+        </div>
+        
+        <div class="person-detail-content" id="meetings-tab">
+            <h4>Meetings</h4>
+            <ul class="meeting-list">
+                <!-- Meetings will be loaded here -->
+            </ul>
+        </div>
+        
+        <div class="person-detail-content" id="notes-tab">
+            <h4>Notes</h4>
+            <ul class="note-list">
+                <!-- Notes will be loaded here -->
+            </ul>
+            
+            <div class="add-note-form">
+                <h5>Add Note</h5>
+                <form id="addNoteForm">
+                    <div class="mb-3">
+                        <input type="text" class="form-control" id="noteTitle" placeholder="Note title">
+                    </div>
+                    <div class="mb-3">
+                        <textarea class="form-control" id="noteContent" rows="3" placeholder="Note content"></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Save Note</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</template>
+
+<!-- Relationship Item Template -->
+<template id="relationshipItemTemplate">
+    <div class="d-flex align-items-center p-3 border-bottom">
+        <div class="person-avatar me-3">
+            <!-- Initial will be added here -->
+        </div>
+        <div class="flex-grow-1">
+            <h5 class="relationship-name mb-1"><!-- Name will be added here --></h5>
+            <div class="text-muted small relationship-meta"><!-- Email/org will be added here --></div>
+        </div>
+        <div class="text-end">
+            <div class="fw-bold text-primary relationship-count"><!-- Count will be added here --></div>
+            <div class="text-muted small">emails exchanged</div>
+        </div>
+    </div>
+</template>
+
+<!-- Person List Item Template -->
+<template id="personListItemTemplate">
+    <li class="person-item">
+        <div class="person-avatar"></div>
+        <div class="person-info">
+            <h5 class="person-name"></h5>
+            <div class="person-meta"></div>
+        </div>
+    </li>
+</template>
+
+<!-- Email Item Template -->
+<template id="emailItemTemplate">
+    <li class="email-item">
+        <div class="email-header">
+            <h5 class="email-subject"></h5>
+            <div class="email-date"></div>
+        </div>
+        <p class="email-snippet"></p>
+    </li>
+</template>
+
+<!-- Meeting Item Template -->
+<template id="meetingItemTemplate">
+    <li class="meeting-item">
+        <div class="meeting-header">
+            <h5 class="meeting-title"></h5>
+            <div class="meeting-date"></div>
+        </div>
+        <p class="meeting-details"></p>
+    </li>
+</template>
+
+<!-- Note Item Template -->
+<template id="noteItemTemplate">
+    <li class="note-item">
+        <div class="note-header">
+            <h5 class="note-title"></h5>
+            <div class="note-date"></div>
+        </div>
+        <p class="note-content"></p>
+    </li>
+</template>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // DOM elements
+        const peopleList = document.getElementById('peopleList');
+        const personDetailView = document.getElementById('personDetailView');
+        const emptyStateView = document.getElementById('emptyStateView');
+        const peopleSearch = document.getElementById('peopleSearch');
+        const addPersonBtn = document.getElementById('addPersonBtn');
+        const topRelationshipsList = document.getElementById('topRelationshipsList');
+        
+        // Sample data (would be fetched from API in a real implementation)
+        let people = [];
+        let selectedPersonId = null;
+        
+        // Fetch people and relationships
+        function fetchPeople() {
+            // Fetch people list
+            fetch('/api/people')
+                .then(response => response.json())
+                .then(data => {
+                    people = data.people || [];
+                    renderPeopleList();
+                })
+                .catch(error => {
+                    console.error('Error fetching people:', error);
+                    peopleList.innerHTML = '<li class="text-center text-muted p-3">Error loading contacts</li>';
+                });
+                
+            // Fetch top relationships
+            fetchTopRelationships();
+        }
+        
+        // Fetch top relationships based on email activity
+        function fetchTopRelationships() {
+            fetch('/api/people/relationships')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success && data.relationships) {
+                        renderTopRelationships(data.relationships);
+                    } else {
+                        topRelationshipsList.innerHTML = '<div class="text-center text-muted py-3">No relationship data available</div>';
+                    }
+                })
+                .catch(error => {
+                    console.error('Error fetching relationships:', error);
+                    topRelationshipsList.innerHTML = '<div class="text-center text-muted py-3">Error loading relationships</div>';
+                });
+        }
+        
+        // Render top relationships
+        function renderTopRelationships(relationships) {
+            topRelationshipsList.innerHTML = '';
+            
+            if (!relationships || relationships.length === 0) {
+                topRelationshipsList.innerHTML = '<div class="text-center text-muted py-3">No relationship data available</div>';
+                return;
+            }
+            
+            relationships.forEach(relationship => {
+                const template = document.getElementById('relationshipItemTemplate');
+                const relationshipItem = document.importNode(template.content, true).querySelector('.d-flex');
+                
+                // Set name, email/org, and email count
+                relationshipItem.querySelector('.relationship-name').textContent = relationship.name;
+                relationshipItem.querySelector('.relationship-meta').textContent = relationship.email || relationship.organization || 'No additional info';
+                relationshipItem.querySelector('.relationship-count').textContent = relationship.emailCount;
+                
+                // Set avatar with first letter of name
+                const avatarElement = relationshipItem.querySelector('.person-avatar');
+                avatarElement.textContent = relationship.name.charAt(0).toUpperCase();
+                
+                // Add click event to show person details if they exist in people list
+                relationshipItem.addEventListener('click', function() {
+                    const person = people.find(p => p.email === relationship.email || p.name === relationship.name);
+                    if (person) {
+                        selectedPersonId = person.id;
+                        showPersonDetails(person.id);
+                        
+                        // Update active state in list
+                        document.querySelectorAll('.person-item').forEach(item => {
+                            item.classList.remove('active');
+                            if (item.dataset.id === person.id) {
+                                item.classList.add('active');
+                            }
+                        });
+                    }
+                });
+                
+                topRelationshipsList.appendChild(relationshipItem);
+            });
+        }
+        
+        // Render people list
+        function renderPeopleList() {
+            peopleList.innerHTML = '';
+            
+            if (people.length === 0) {
+                peopleList.innerHTML = '<li class="text-center text-muted p-3">No contacts found</li>';
+                return;
+            }
+            
+            people.forEach(person => {
+                const template = document.getElementById('personListItemTemplate');
+                const personItem = document.importNode(template.content, true).querySelector('.person-item');
+                
+                personItem.dataset.id = person.id;
+                if (person.id === selectedPersonId) {
+                    personItem.classList.add('active');
+                }
+                
+                personItem.querySelector('.person-name').textContent = person.name;
+                personItem.querySelector('.person-meta').textContent = person.organization || 'No organization';
+                
+                // Set avatar with first letter of name
+                const avatarElement = personItem.querySelector('.person-avatar');
+                avatarElement.textContent = person.name.charAt(0).toUpperCase();
+                
+                // Add click event to show person details
+                personItem.addEventListener('click', function() {
+                    selectedPersonId = person.id;
+                    showPersonDetails(person.id);
+                    
+                    // Update active state in list
+                    document.querySelectorAll('.person-item').forEach(item => {
+                        item.classList.remove('active');
+                    });
+                    this.classList.add('active');
+                });
+                
+                peopleList.appendChild(personItem);
+            });
+        }
+        
+        // Show person details
+        function showPersonDetails(personId) {
+            const person = people.find(p => p.id === personId);
+            if (!person) return;
+            
+            const template = document.getElementById('personDetailTemplate');
+            const detailView = document.importNode(template.content, true);
+            
+            // Fill in basic details
+            detailView.querySelector('.person-name').textContent = person.name;
+            detailView.querySelector('.person-organization').textContent = person.organization || 'No organization';
+            detailView.querySelector('.person-email').textContent = person.email || 'No email';
+            detailView.querySelector('.person-phone').textContent = person.phone || 'No phone';
+            
+            // Set avatar with first letter of name
+            const avatarElement = detailView.querySelector('.person-detail-avatar');
+            avatarElement.textContent = person.name.charAt(0).toUpperCase();
+            
+            // Fill in detail tab content
+            detailView.querySelector('.person-email-detail').textContent = person.email || 'No email';
+            detailView.querySelector('.person-phone-detail').textContent = person.phone || 'No phone';
+            detailView.querySelector('.person-organization-detail').textContent = person.organization || 'No organization';
+            detailView.querySelector('.person-title-detail').textContent = person.title || 'No title';
+            
+            // Interaction summary
+            detailView.querySelector('.person-last-contact').textContent = formatDate(person.lastContact) || 'Never';
+            detailView.querySelector('.person-email-count').textContent = person.emailCount || '0';
+            detailView.querySelector('.person-meeting-count').textContent = person.meetingCount || '0';
+            detailView.querySelector('.person-projects').textContent = person.projects?.join(', ') || 'None';
+            
+            // Recent activity
+            const recentActivity = detailView.querySelector('.recent-activity');
+            if (person.recentActivity && person.recentActivity.length > 0) {
+                const activityList = document.createElement('ul');
+                activityList.className = 'list-group';
+                
+                person.recentActivity.forEach(activity => {
+                    const activityItem = document.createElement('li');
+                    activityItem.className = 'list-group-item';
+                    
+                    const activityDate = document.createElement('small');
+                    activityDate.className = 'text-muted float-end';
+                    activityDate.textContent = formatDate(activity.date);
+                    
+                    activityItem.textContent = activity.description;
+                    activityItem.appendChild(activityDate);
+                    
+                    activityList.appendChild(activityItem);
+                });
+                
+                recentActivity.appendChild(activityList);
+            } else {
+                recentActivity.innerHTML = '<p class="text-muted">No recent activity</p>';
+            }
+            
+            // Load emails
+            const emailsList = detailView.querySelector('.email-list');
+            if (person.emails && person.emails.length > 0) {
+                person.emails.forEach(email => {
+                    const template = document.getElementById('emailItemTemplate');
+                    const emailItem = document.importNode(template.content, true).querySelector('.email-item');
+                    
+                    emailItem.querySelector('.email-subject').textContent = email.subject;
+                    emailItem.querySelector('.email-date').textContent = formatDate(email.date);
+                    emailItem.querySelector('.email-snippet').textContent = email.snippet;
+                    
+                    emailsList.appendChild(emailItem);
+                });
+            } else {
+                emailsList.innerHTML = '<li class="text-center text-muted p-3">No emails found</li>';
+            }
+            
+            // Load meetings
+            const meetingsList = detailView.querySelector('.meeting-list');
+            if (person.meetings && person.meetings.length > 0) {
+                person.meetings.forEach(meeting => {
+                    const template = document.getElementById('meetingItemTemplate');
+                    const meetingItem = document.importNode(template.content, true).querySelector('.meeting-item');
+                    
+                    meetingItem.querySelector('.meeting-title').textContent = meeting.title;
+                    meetingItem.querySelector('.meeting-date').textContent = formatDate(meeting.date);
+                    meetingItem.querySelector('.meeting-details').textContent = meeting.details;
+                    
+                    meetingsList.appendChild(meetingItem);
+                });
+            } else {
+                meetingsList.innerHTML = '<li class="text-center text-muted p-3">No meetings found</li>';
+            }
+            
+            // Load notes
+            const notesList = detailView.querySelector('.note-list');
+            if (person.notes && person.notes.length > 0) {
+                person.notes.forEach(note => {
+                    const template = document.getElementById('noteItemTemplate');
+                    const noteItem = document.importNode(template.content, true).querySelector('.note-item');
+                    
+                    noteItem.querySelector('.note-title').textContent = note.title;
+                    noteItem.querySelector('.note-date').textContent = formatDate(note.date);
+                    noteItem.querySelector('.note-content').textContent = note.content;
+                    
+                    notesList.appendChild(noteItem);
+                });
+            } else {
+                notesList.innerHTML = '<li class="text-center text-muted p-3">No notes found</li>';
+            }
+            
+            // Tab switching
+            const tabs = detailView.querySelectorAll('.person-detail-tab');
+            const tabContents = detailView.querySelectorAll('.person-detail-content');
+            
+            tabs.forEach(tab => {
+                tab.addEventListener('click', function() {
+                    tabs.forEach(t => t.classList.remove('active'));
+                    this.classList.add('active');
+                    
+                    const tabId = this.dataset.tab + '-tab';
+                    tabContents.forEach(content => {
+                        content.classList.remove('active');
+                        if (content.id === tabId) {
+                            content.classList.add('active');
+                        }
+                    });
+                });
+            });
+            
+            // Add note form
+            const addNoteForm = detailView.querySelector('#addNoteForm');
+            addNoteForm.addEventListener('submit', function(e) {
+                e.preventDefault();
+                
+                const noteTitle = document.getElementById('noteTitle').value;
+                const noteContent = document.getElementById('noteContent').value;
+                
+                if (!noteTitle || !noteContent) return;
+                
+                const newNote = {
+                    title: noteTitle,
+                    content: noteContent,
+                    date: new Date().toISOString(),
+                    personId: personId
+                };
+                
+                fetch(`/api/people/${personId}/notes`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(newNote),
+                })
+                .then(response => response.json())
+                .then(data => {
+                    // Add note to list
+                    const template = document.getElementById('noteItemTemplate');
+                    const noteItem = document.importNode(template.content, true).querySelector('.note-item');
+                    
+                    noteItem.querySelector('.note-title').textContent = data.title;
+                    noteItem.querySelector('.note-date').textContent = formatDate(data.date);
+                    noteItem.querySelector('.note-content').textContent = data.content;
+                    
+                    notesList.innerHTML = '';
+                    notesList.appendChild(noteItem);
+                    
+                    // Reset form
+                    addNoteForm.reset();
+                })
+                .catch(error => {
+                    console.error('Error adding note:', error);
+                });
+            });
+            
+            // Edit person
+            detailView.querySelector('.edit-person').addEventListener('click', function() {
+                // In a real implementation, this would open an edit form
+                alert('Edit person functionality would be implemented here');
+            });
+            
+            // Delete person
+            detailView.querySelector('.delete-person').addEventListener('click', function() {
+                if (!confirm('Are you sure you want to delete this contact?')) return;
+                
+                fetch(`/api/people/${personId}`, {
+                    method: 'DELETE',
+                })
+                .then(response => {
+                    if (response.ok) {
+                        // Remove person from list
+                        people = people.filter(p => p.id !== personId);
+                        selectedPersonId = null;
+                        renderPeopleList();
+                        
+                        // Hide detail view
+                        personDetailView.innerHTML = '';
+                        personDetailView.style.display = 'none';
+                        emptyStateView.style.display = 'block';
+                    } else {
+                        throw new Error('Failed to delete person');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error deleting person:', error);
+                    alert('Failed to delete contact. Please try again.');
+                });
+            });
+            
+            // Show detail view
+            personDetailView.innerHTML = '';
+            personDetailView.appendChild(detailView);
+            personDetailView.style.display = 'block';
+            emptyStateView.style.display = 'none';
+        }
+        
+        // Add new person
+        addPersonBtn.addEventListener('click', function() {
+            // In a real implementation, this would open a form to add a new person
+            alert('Add person functionality would be implemented here');
+        });
+        
+        // Search people
+        peopleSearch.addEventListener('input', function() {
+            const searchTerm = this.value.toLowerCase();
+            
+            if (searchTerm === '') {
+                renderPeopleList();
+                return;
+            }
+            
+            const filteredPeople = people.filter(person => {
+                return (
+                    person.name.toLowerCase().includes(searchTerm) ||
+                    (person.email && person.email.toLowerCase().includes(searchTerm)) ||
+                    (person.organization && person.organization.toLowerCase().includes(searchTerm))
+                );
+            });
+            
+            peopleList.innerHTML = '';
+            
+            if (filteredPeople.length === 0) {
+                peopleList.innerHTML = '<li class="text-center text-muted p-3">No matching contacts found</li>';
+                return;
+            }
+            
+            filteredPeople.forEach(person => {
+                const template = document.getElementById('personListItemTemplate');
+                const personItem = document.importNode(template.content, true).querySelector('.person-item');
+                
+                personItem.dataset.id = person.id;
+                personItem.querySelector('.person-name').textContent = person.name;
+                personItem.querySelector('.person-meta').textContent = person.organization || 'No organization';
+                
+                // Set avatar with first letter of name
+                const avatarElement = personItem.querySelector('.person-avatar');
+                avatarElement.textContent = person.name.charAt(0).toUpperCase();
+                
+                // Add click event to show person details
+                personItem.addEventListener('click', function() {
+                    selectedPersonId = person.id;
+                    showPersonDetails(person.id);
+                    
+                    // Update active state in list
+                    document.querySelectorAll('.person-item').forEach(item => {
+                        item.classList.remove('active');
+                    });
+                    this.classList.add('active');
+                });
+                
+                peopleList.appendChild(personItem);
+            });
+        });
+        
+        // Helper function to format dates
+        function formatDate(dateString) {
+            if (!dateString) return '';
+            const date = new Date(dateString);
+            return date.toLocaleDateString();
+        }
+        
+        // Initialize
+        fetchPeople();
+    });
+</script>
+{% endblock %}

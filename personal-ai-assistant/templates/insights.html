@@ -1,0 +1,575 @@
+{% extends "layout.html" %}
+
+{% block title %}Insights | Chief of Staff AI{% endblock %}
+
+{% block additional_styles %}
+<style>
+    .insights-container {
+        display: flex;
+        flex-direction: column;
+        gap: 1.5rem;
+    }
+    .insight-card {
+        background-color: #fff;
+        border-radius: 10px;
+        padding: 1.5rem;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    .insight-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1rem;
+    }
+    .insight-title {
+        font-size: 1.25rem;
+        font-weight: 600;
+        margin: 0;
+    }
+    .insight-date {
+        font-size: 0.85rem;
+        color: #6c757d;
+    }
+    .insight-content {
+        margin-bottom: 1rem;
+    }
+    .insight-footer {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 0.85rem;
+        color: #6c757d;
+    }
+    .insight-source {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    .insight-actions {
+        display: flex;
+        gap: 0.5rem;
+    }
+    .insight-tag {
+        background-color: #e9ecef;
+        border-radius: 16px;
+        padding: 0.25rem 0.75rem;
+        font-size: 0.8rem;
+        margin-right: 0.5rem;
+    }
+    .insight-filters {
+        display: flex;
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+        flex-wrap: wrap;
+    }
+    .insight-filter {
+        background-color: #fff;
+        border: 1px solid #dee2e6;
+        border-radius: 20px;
+        padding: 0.5rem 1rem;
+        cursor: pointer;
+        font-size: 0.9rem;
+        transition: all 0.2s;
+    }
+    .insight-filter.active {
+        background-color: #4a6fdc;
+        color: white;
+        border-color: #4a6fdc;
+    }
+    .insight-filter:hover:not(.active) {
+        border-color: #4a6fdc;
+        color: #4a6fdc;
+    }
+    .stats-row {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+    }
+    .stat-card {
+        background-color: #f8f9fa;
+        border-radius: 10px;
+        padding: 1.5rem;
+        text-align: center;
+    }
+    .stat-value {
+        font-size: 2rem;
+        font-weight: 600;
+        color: #4a6fdc;
+        margin-bottom: 0.5rem;
+    }
+    .stat-label {
+        font-size: 0.9rem;
+        color: #6c757d;
+    }
+    .chart-container {
+        height: 300px;
+        margin-bottom: 1.5rem;
+    }
+
+
+
+    .project-card {
+        padding: 1rem;
+        border-bottom: 1px solid #dee2e6;
+    }
+    .project-card:last-child {
+        border-bottom: none;
+    }
+    .project-title {
+        font-weight: 600;
+        margin: 0 0 0.5rem 0;
+    }
+    .project-meta {
+        display: flex;
+        gap: 1rem;
+        font-size: 0.85rem;
+        color: #6c757d;
+        margin-bottom: 0.5rem;
+    }
+    .project-description {
+        font-size: 0.9rem;
+        margin-bottom: 0.5rem;
+    }
+    .project-people {
+        display: flex;
+        gap: 0.5rem;
+    }
+    .person-avatar {
+        width: 30px;
+        height: 30px;
+        border-radius: 50%;
+        background-color: #e9ecef;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.8rem;
+        color: #4a6fdc;
+    }
+    .empty-state {
+        text-align: center;
+        padding: 3rem;
+        color: #6c757d;
+    }
+    .empty-state i {
+        font-size: 3rem;
+        margin-bottom: 1rem;
+        color: #dee2e6;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="content-container">
+    <div class="header">
+        <h1>Insights</h1>
+        <p class="mb-0">Discover patterns and insights from your emails and knowledge</p>
+    </div>
+    
+    <div class="stats-row">
+        <div class="stat-card">
+            <div class="stat-value" id="emailCount">0</div>
+            <div class="stat-label">Emails Processed</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" id="peopleCount">0</div>
+            <div class="stat-label">People Identified</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" id="projectCount">0</div>
+            <div class="stat-label">Projects Detected</div>
+        </div>
+    </div>
+    
+    <div class="insight-filters">
+        <div class="insight-filter active" data-filter="all">All Insights</div>
+        <div class="insight-filter" data-filter="people">People</div>
+        <div class="insight-filter" data-filter="projects">Projects</div>
+        <div class="insight-filter" data-filter="tasks">Tasks</div>
+        <div class="insight-filter" data-filter="activity">Activity</div>
+        <div class="insight-filter" data-filter="trends">Trends</div>
+    </div>
+    
+    <div class="insights-container">
+
+        
+        <div class="insight-card">
+            <div class="insight-header">
+                <h3 class="insight-title">Active Projects</h3>
+                <div class="insight-date">Based on recent communications</div>
+            </div>
+            <div class="insight-content">
+                <div id="projectsList">
+                    <!-- Projects will be loaded here -->
+                </div>
+            </div>
+        </div>
+        
+        <div class="insight-card">
+            <div class="insight-header">
+                <h3 class="insight-title">Current Tasks</h3>
+                <div class="insight-date">Tasks requiring your attention</div>
+            </div>
+            <div class="insight-content">
+                <div id="tasksList">
+                    <!-- Tasks will be loaded here -->
+                </div>
+            </div>
+            <div class="insight-footer">
+                <a href="/tasks" class="btn btn-sm btn-outline-primary">View All Tasks</a>
+            </div>
+        </div>
+        
+        <div class="insight-card">
+            <div class="insight-header">
+                <h3 class="insight-title">Email Activity Over Time</h3>
+                <div class="insight-date">Last 30 days</div>
+            </div>
+            <div class="insight-content">
+                <div class="chart-container" id="emailActivityChart">
+                    <!-- Chart will be displayed here -->
+                </div>
+            </div>
+        </div>
+        
+        <div class="insight-card">
+            <div class="insight-header">
+                <h3 class="insight-title">Generated Insights</h3>
+                <button class="btn btn-sm btn-primary" id="generateInsightsBtn">
+                    <i class="bi bi-lightning"></i> Generate New Insights
+                </button>
+            </div>
+            <div class="insight-content">
+                <div id="generatedInsightsList">
+                    <!-- Generated insights will be loaded here -->
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Project Item Template -->
+<template id="projectItemTemplate">
+    <div class="project-card">
+        <h4 class="project-title"></h4>
+        <div class="project-meta">
+            <div class="project-date">
+                <i class="bi bi-calendar"></i>
+                <span></span>
+            </div>
+            <div class="project-emails">
+                <i class="bi bi-envelope"></i>
+                <span></span>
+            </div>
+        </div>
+        <div class="project-description"></div>
+        <div class="project-people"></div>
+    </div>
+</template>
+
+<!-- Task Item Template -->
+<template id="taskItemTemplate">
+    <div class="task-item mb-3 border-bottom pb-3">
+        <div class="d-flex justify-content-between align-items-start">
+            <div>
+                <h5 class="task-title mb-1"></h5>
+                <div class="mb-2">
+                    <span class="badge task-priority me-1"></span>
+                    <span class="badge task-status me-1"></span>
+                    <small class="text-muted task-due-date"></small>
+                </div>
+            </div>
+        </div>
+    </div>
+</template>
+
+<!-- Generated Insight Template -->
+<template id="insightItemTemplate">
+    <div class="insight-card mb-3">
+        <div class="insight-header">
+            <h4 class="insight-title"></h4>
+            <div class="insight-date"></div>
+        </div>
+        <div class="insight-content"></div>
+        <div class="insight-footer">
+            <div class="insight-source">
+                <i class="bi bi-envelope"></i>
+                <span>Based on email analysis</span>
+            </div>
+            <div class="insight-actions">
+                <button class="btn btn-sm btn-outline-primary save-insight" title="Save Insight">
+                    <i class="bi bi-bookmark"></i>
+                </button>
+                <button class="btn btn-sm btn-outline-secondary dismiss-insight" title="Dismiss">
+                    <i class="bi bi-x"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+</template>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Filter switching
+        const insightFilters = document.querySelectorAll('.insight-filter');
+        
+        insightFilters.forEach(filter => {
+            filter.addEventListener('click', function() {
+                insightFilters.forEach(f => f.classList.remove('active'));
+                this.classList.add('active');
+                // In a real implementation, this would filter the insights
+                console.log('Selected filter:', this.dataset.filter);
+            });
+        });
+        
+        // Fetch insights data
+        function fetchInsightsData() {
+            fetch('/api/insights')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        // Load projects
+                        if (data.projects) {
+                            loadProjects(data.projects);
+                        }
+                        
+                        // Initialize email activity chart
+                        if (data.emailActivity) {
+                            initializeEmailActivityChart(data.emailActivity);
+                        }
+                        
+                        // Load generated insights
+                        if (data.generatedInsights) {
+                            loadGeneratedInsights(data.generatedInsights);
+                        }
+                        
+                        // Load tasks
+                        if (data.tasks) {
+                            loadTasks(data.tasks);
+                        }
+                    } else {
+                        showEmptyState();
+                    }
+                })
+                .catch(error => {
+                    console.error('Error fetching insights:', error);
+                    showEmptyState();
+                });
+        }
+        
+        // Filter insights
+        const filters = document.querySelectorAll('.insight-filter');
+        filters.forEach(filter => {
+            filter.addEventListener('click', function() {
+                filters.forEach(f => f.classList.remove('active'));
+                this.classList.add('active');
+                
+                // In a real implementation, this would filter the insights
+                // For now, we'll just log the selected filter
+                console.log('Selected filter:', this.dataset.filter);
+            });
+        });
+        
+        // Load projects
+        function loadProjects(projects) {
+            const projectsList = document.getElementById('projectsList');
+            projectsList.innerHTML = '';
+            
+            if (projects.length === 0) {
+                projectsList.innerHTML = '<div class="text-center text-muted py-3">No project data available</div>';
+                return;
+            }
+            
+            projects.forEach(project => {
+                const template = document.getElementById('projectItemTemplate');
+                const projectItem = document.importNode(template.content, true).querySelector('.project-card');
+                
+                projectItem.querySelector('.project-title').textContent = project.name;
+                projectItem.querySelector('.project-date span').textContent = formatDate(project.lastActivity);
+                projectItem.querySelector('.project-emails span').textContent = project.emailCount + ' emails';
+                projectItem.querySelector('.project-description').textContent = project.description || 'No description available';
+                
+                // Add people involved
+                const peopleContainer = projectItem.querySelector('.project-people');
+                if (project.people && project.people.length > 0) {
+                    project.people.forEach(person => {
+                        const personAvatar = document.createElement('div');
+                        personAvatar.className = 'person-avatar';
+                        personAvatar.textContent = person.name.charAt(0).toUpperCase();
+                        personAvatar.title = person.name;
+                        peopleContainer.appendChild(personAvatar);
+                    });
+                }
+                
+                projectsList.appendChild(projectItem);
+            });
+        }
+        
+        // Initialize email activity chart
+        function initializeEmailActivityChart(activityData) {
+            // This would be implemented with a charting library like Chart.js
+            console.log('Initializing email activity chart with data:', activityData);
+            
+            // For now, let's just show a placeholder
+            const chartContainer = document.getElementById('emailActivityChart');
+            chartContainer.innerHTML = '<div class="text-center text-muted py-5">Email activity chart will be displayed here</div>';
+        }
+        
+        // Load generated insights
+        function loadGeneratedInsights(insights) {
+            const insightsList = document.getElementById('generatedInsightsList');
+            insightsList.innerHTML = '';
+            
+            if (insights.length === 0) {
+                insightsList.innerHTML = '<div class="text-center text-muted py-3">No insights generated yet</div>';
+                return;
+            }
+            
+            insights.forEach(insight => {
+                const template = document.getElementById('insightItemTemplate');
+                const insightItem = document.importNode(template.content, true).querySelector('.insight-card');
+                
+                insightItem.querySelector('.insight-title').textContent = insight.title;
+                insightItem.querySelector('.insight-date').textContent = formatDate(insight.date);
+                insightItem.querySelector('.insight-content').textContent = insight.content;
+                
+                // Add tags if available
+                if (insight.tags && insight.tags.length > 0) {
+                    const tagsContainer = document.createElement('div');
+                    tagsContainer.className = 'mb-2';
+                    
+                    insight.tags.forEach(tag => {
+                        const tagElement = document.createElement('span');
+                        tagElement.className = 'insight-tag';
+                        tagElement.textContent = tag;
+                        tagsContainer.appendChild(tagElement);
+                    });
+                    
+                    insightItem.querySelector('.insight-content').prepend(tagsContainer);
+                }
+                
+                insightsList.appendChild(insightItem);
+            });
+        }
+        
+        // Generate new insights
+        document.getElementById('generateInsightsBtn').addEventListener('click', function() {
+            this.disabled = true;
+            this.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Generating...';
+            
+            fetch('/api/insights/generate', {
+                method: 'POST'
+            })
+            .then(response => response.json())
+            .then(data => {
+                this.disabled = false;
+                this.innerHTML = '<i class="bi bi-lightning"></i> Generate New Insights';
+                
+                if (data.insights && data.insights.length > 0) {
+                    loadGeneratedInsights(data.insights);
+                }
+            })
+            .catch(error => {
+                console.error('Error generating insights:', error);
+                this.disabled = false;
+                this.innerHTML = '<i class="bi bi-lightning"></i> Generate New Insights';
+                alert('Failed to generate insights. Please try again.');
+            });
+        });
+        
+        // Helper function to format dates
+        function formatDate(dateString) {
+            const date = new Date(dateString);
+            return date.toLocaleDateString();
+        }
+        
+        // Show empty state
+        function showEmptyState() {
+            const insightsContainer = document.querySelector('.insights-container');
+            insightsContainer.innerHTML = `
+                <div class="empty-state">
+                    <i class="bi bi-graph-up"></i>
+                    <h3>No insights available</h3>
+                    <p>Connect your email and process some messages to generate insights.</p>
+                    <a href="/email-knowledge" class="btn btn-primary mt-3">Process Emails</a>
+                </div>
+            `;
+        }
+        
+        // Load tasks
+        function loadTasks(tasks) {
+            const tasksList = document.getElementById('tasksList');
+            tasksList.innerHTML = '';
+            
+            if (tasks.length === 0) {
+                tasksList.innerHTML = '<div class="text-center text-muted py-3">No tasks available</div>';
+                return;
+            }
+            
+            // Sort tasks by priority (high, medium, low)
+            tasks.sort((a, b) => {
+                const priorityOrder = { 'high': 1, 'medium': 2, 'low': 3 };
+                return priorityOrder[a.priority || 'medium'] - priorityOrder[b.priority || 'medium'];
+            });
+            
+            // Only show up to 5 tasks in the insights view
+            const tasksToShow = tasks.slice(0, 5);
+            
+            tasksToShow.forEach(task => {
+                const template = document.getElementById('taskItemTemplate');
+                const taskItem = document.importNode(template.content, true).querySelector('.task-item');
+                
+                // Set task details
+                taskItem.querySelector('.task-title').textContent = task.title || task.description;
+                
+                // Set priority badge
+                const priorityBadge = taskItem.querySelector('.task-priority');
+                priorityBadge.textContent = task.priority || 'medium';
+                if (task.priority === 'high') {
+                    priorityBadge.classList.add('bg-danger');
+                } else if (task.priority === 'medium') {
+                    priorityBadge.classList.add('bg-warning');
+                } else {
+                    priorityBadge.classList.add('bg-info');
+                }
+                
+                // Set status badge
+                const statusBadge = taskItem.querySelector('.task-status');
+                statusBadge.textContent = task.status || 'pending';
+                if (task.status === 'completed') {
+                    statusBadge.classList.add('bg-success');
+                } else if (task.status === 'in_progress') {
+                    statusBadge.classList.add('bg-primary');
+                } else {
+                    statusBadge.classList.add('bg-secondary');
+                }
+                
+                // Set due date if available
+                if (task.due_date) {
+                    const dueDate = new Date(task.due_date);
+                    const formattedDate = dueDate.toLocaleDateString();
+                    taskItem.querySelector('.task-due-date').textContent = `Due: ${formattedDate}`;
+                } else {
+                    taskItem.querySelector('.task-due-date').style.display = 'none';
+                }
+                
+                tasksList.appendChild(taskItem);
+            });
+            
+            // Show count of remaining tasks if there are more than 5
+            if (tasks.length > 5) {
+                const remainingCount = tasks.length - 5;
+                const remainingTasks = document.createElement('div');
+                remainingTasks.className = 'text-center text-muted mt-2';
+                remainingTasks.textContent = `+ ${remainingCount} more tasks`;
+                tasksList.appendChild(remainingTasks);
+            }
+        }
+        
+        // Initialize
+        fetchInsightsData();
+    });
+</script>
+{% endblock %}
