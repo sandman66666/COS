@@ -1,0 +1,90 @@
+{
+  "summary": {
+    "total": 10,
+    "successes": 10,
+    "failures": 0,
+    "timestamp": "2025-06-02T18:46:19.790928"
+  },
+  "results": [
+    {
+      "name": "Main Page",
+      "endpoint": "/",
+      "method": "GET",
+      "success": true,
+      "message": "Status: 200",
+      "status_code": 200
+    },
+    {
+      "name": "People API",
+      "endpoint": "/api/people",
+      "method": "GET",
+      "success": true,
+      "message": "Status: 401",
+      "status_code": null
+    },
+    {
+      "name": "Tasks API",
+      "endpoint": "/api/tasks",
+      "method": "GET",
+      "success": true,
+      "message": "Status: 401",
+      "status_code": null
+    },
+    {
+      "name": "Insights API",
+      "endpoint": "/api/insights",
+      "method": "GET",
+      "success": true,
+      "message": "Status: 401",
+      "status_code": null
+    },
+    {
+      "name": "Sync Status API",
+      "endpoint": "/api/sync-status",
+      "method": "GET",
+      "success": true,
+      "message": "Status: 401",
+      "status_code": null
+    },
+    {
+      "name": "Reset Database API",
+      "endpoint": "/api/reset-database",
+      "method": "POST",
+      "success": true,
+      "message": "Status: 401",
+      "status_code": null
+    },
+    {
+      "name": "Force Refresh API",
+      "endpoint": "/api/force-refresh",
+      "method": "POST",
+      "success": true,
+      "message": "Status: 401",
+      "status_code": null
+    },
+    {
+      "name": "Gmail Auth API",
+      "endpoint": "/api/auth/gmail",
+      "method": "GET",
+      "success": true,
+      "message": "Status: 404",
+      "status_code": null
+    },
+    {
+      "name": "Gmail Auth Callback API",
+      "endpoint": "/api/auth/gmail/callback",
+      "method": "GET",
+      "success": true,
+      "message": "Status: 404",
+      "status_code": null
+    },
+    {
+      "name": "Debug Gmail API",
+      "endpoint": "/api/debug-gmail",
+      "method": "GET",
+      "success": true,
+      "message": "Status: 401",
+      "status_code": null
+    }
+  ]
+}

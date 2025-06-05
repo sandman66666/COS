@@ -1,0 +1,31 @@
+{
+  "summary": {
+    "total_tests": 2,
+    "passed": 1,
+    "failed": 1,
+    "success_rate": "50.0%",
+    "timestamp": "2025-06-02T18:45:41.013136"
+  },
+  "tests": [
+    {
+      "name": "Server Running",
+      "passed": true,
+      "message": "Server is running",
+      "duration": "0.034s",
+      "timestamp": "2025-06-02T18:45:41.010700",
+      "response": {
+        "status_code": 200
+      }
+    },
+    {
+      "name": "Gmail Authentication",
+      "passed": false,
+      "message": "Debug session endpoint returned status code 401",
+      "duration": "0.002s",
+      "timestamp": "2025-06-02T18:45:41.013060",
+      "response": {
+        "status_code": 401
+      }
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "start_time": "2025-06-02T21:48:04.094402",
+  "tests": {
+    "direct_api": {
+      "success": false,
+      "error": "Not authenticated"
+    }
+  },
+  "overall_success": false,
+  "end_time": "2025-06-02T21:48:04.098144"
+}
